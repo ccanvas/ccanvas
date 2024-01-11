@@ -3,17 +3,18 @@ use std::{
     io::{stdout, Write},
     path::PathBuf,
     process,
+    sync::Mutex,
 };
 
 use termion::{input::MouseTerminal, raw::IntoRawMode, screen::IntoAlternateScreen};
 
 use crate::{
-    structs::Storage,
-    values::{ROOT, SCREEN},
+    structs::{Discriminator, Storage},
+    values::{FOCUSED, ROOT, SCREEN},
 };
 
 /// run when entering
-pub async fn enter() {
+pub async fn init() {
     let root = PathBuf::from("/tmp")
         .join("ccanvas")
         .join(process::id().to_string());
@@ -22,17 +23,6 @@ pub async fn enter() {
 
     fs::create_dir_all(&root).unwrap();
     ROOT.set(root).unwrap();
-
-    let mut screen = MouseTerminal::from(
-        stdout()
-            .into_raw_mode()
-            .unwrap()
-            .into_alternate_screen()
-            .unwrap(),
-    );
-    write!(screen, "{}", termion::clear::All).unwrap();
-    screen.flush().unwrap();
-    let _ = unsafe { SCREEN.set(screen) };
 
     #[cfg(feature = "log")]
     {
@@ -52,4 +42,18 @@ pub async fn enter() {
         )
         .unwrap();
     }
+}
+
+pub fn enter() {
+    let mut screen = MouseTerminal::from(
+        stdout()
+            .into_raw_mode()
+            .unwrap()
+            .into_alternate_screen()
+            .unwrap(),
+    );
+    write!(screen, "{}", termion::clear::All).unwrap();
+    screen.flush().unwrap();
+    unsafe { FOCUSED.set(Discriminator::master()) }.unwrap();
+    let _ = unsafe { SCREEN.set(Mutex::new(screen)) };
 }

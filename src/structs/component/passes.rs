@@ -7,10 +7,8 @@ use super::{Discriminator, Subscription};
 pub struct PassItem {
     /// 0 is highest
     /// None is lowest
-    /// if there are clashes, first entry will revieve signal first
+    /// if there are clashes, first entry will recieve the signal first
     priority: Option<u32>,
-    /// pointer to process wrapper
-    // process: Arc<Mutex<Process>>,
     /// discrim of process
     discrim: Discriminator,
 }
@@ -30,6 +28,25 @@ impl PassItem {
 impl PartialEq for PassItem {
     fn eq(&self, other: &Self) -> bool {
         self.discrim == other.discrim
+    }
+}
+
+impl PartialOrd for PassItem {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for PassItem {
+    // to make lower numbers come first, Nones come last
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        if self.priority == other.priority {
+            std::cmp::Ordering::Equal
+        } else if other.priority.is_none() {
+            std::cmp::Ordering::Less
+        } else {
+            self.priority.unwrap().cmp(&other.priority.unwrap())
+        }
     }
 }
 
@@ -59,6 +76,7 @@ impl Passes {
 
         let items = self.subscriptions.entry(subscription).or_default();
 
+        // remove duplicates
         if let Some(index) = items.iter().position(|x| x.discrim() == item.discrim()) {
             items.remove(index);
         }
@@ -123,7 +141,7 @@ impl Passes {
 
         // they are now according to priority
         // but there may be duplicates
-        subscribers.sort_by_cached_key(|item| item.priority);
+        subscribers.sort();
 
         // only take the highest priority
         // if a component has multiple subscriptions on this event

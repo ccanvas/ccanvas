@@ -32,6 +32,10 @@ pub enum RenderRequest {
     /// show cursor
     ShowCursor,
 
+    #[serde(rename = "clear all")]
+    /// clear entire screen
+    ClearAll,
+
     #[serde(rename = "render multiple")]
     /// complete multiple render tasks at the same time - e.g. stacking changes
     RenderMultiple { tasks: Vec<Self> },
@@ -42,7 +46,7 @@ impl RenderRequest {
         match self {
             Self::SetChar { x, y, c } => {
                 write!(
-                    unsafe { SCREEN.get_mut() }.unwrap(),
+                    unsafe { SCREEN.get().unwrap().lock().unwrap() },
                     "{}{c}",
                     termion::cursor::Goto(*x as u16 + 1, *y as u16 + 1)
                 )
@@ -50,7 +54,7 @@ impl RenderRequest {
             }
             Self::SetCharColoured { x, y, c, fg, bg } => {
                 write!(
-                    unsafe { SCREEN.get_mut() }.unwrap(),
+                    unsafe { SCREEN.get().unwrap().lock().unwrap() },
                     "{}{}{}{c}{}{}",
                     color::Fg(*fg),
                     color::Bg(*bg),
@@ -63,48 +67,68 @@ impl RenderRequest {
             Self::Flush => flush = true,
             Self::SetCursorStyle { style } => match style {
                 CursorStyle::BlinkingBar => write!(
-                    unsafe { SCREEN.get_mut() }.unwrap(),
+                    unsafe { SCREEN.get().unwrap().lock().unwrap() },
                     "{}",
                     cursor::BlinkingBar
                 ),
                 CursorStyle::BlinkingBlock => write!(
-                    unsafe { SCREEN.get_mut() }.unwrap(),
+                    unsafe { SCREEN.get().unwrap().lock().unwrap() },
                     "{}",
                     cursor::BlinkingBlock
                 ),
                 CursorStyle::BlinkingUnderline => write!(
-                    unsafe { SCREEN.get_mut() }.unwrap(),
+                    unsafe { SCREEN.get().unwrap().lock().unwrap() },
                     "{}",
                     cursor::BlinkingUnderline
                 ),
-                CursorStyle::SteadyBar => write!(
-                    unsafe { SCREEN.get_mut() }.unwrap(),
-                    "{}",
-                    cursor::SteadyBar
-                ),
+                CursorStyle::SteadyBar => {
+                    write!(
+                        unsafe { SCREEN.get().unwrap().lock().unwrap() },
+                        "{}",
+                        cursor::SteadyBar
+                    )
+                }
                 CursorStyle::SteadyBlock => write!(
-                    unsafe { SCREEN.get_mut() }.unwrap(),
+                    unsafe { SCREEN.get().unwrap().lock().unwrap() },
                     "{}",
                     cursor::SteadyBlock
                 ),
                 CursorStyle::SteadyUnderline => write!(
-                    unsafe { SCREEN.get_mut() }.unwrap(),
+                    unsafe { SCREEN.get().unwrap().lock().unwrap() },
                     "{}",
                     cursor::SteadyUnderline
                 ),
             }
             .unwrap(),
-            Self::HideCursor => {
-                write!(unsafe { SCREEN.get_mut() }.unwrap(), "{}", cursor::Hide).unwrap()
+            Self::HideCursor => write!(
+                unsafe { SCREEN.get().unwrap().lock().unwrap() },
+                "{}",
+                cursor::Hide
+            )
+            .unwrap(),
+            Self::ShowCursor => write!(
+                unsafe { SCREEN.get().unwrap().lock().unwrap() },
+                "{}",
+                cursor::Show
+            )
+            .unwrap(),
+            Self::RenderMultiple { tasks } => {
+                for task in tasks.clone() {
+                    task.draw(false);
+                }
             }
-            Self::ShowCursor => {
-                write!(unsafe { SCREEN.get_mut() }.unwrap(), "{}", cursor::Show).unwrap()
-            }
-            Self::RenderMultiple { tasks } => tasks.iter().for_each(|item| item.draw(false)),
+            Self::ClearAll => write!(
+                unsafe { SCREEN.get().unwrap().lock().unwrap() },
+                "{}",
+                termion::clear::All
+            )
+            .unwrap(),
         }
 
         if flush {
-            unsafe { SCREEN.get_mut() }.unwrap().flush().unwrap();
+            unsafe { SCREEN.get().unwrap().lock().unwrap() }
+                .flush()
+                .unwrap();
         }
     }
 }

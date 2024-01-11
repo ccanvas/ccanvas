@@ -17,7 +17,7 @@ pub struct Space {
     discrim: Discriminator,
 
     /// data storage for children
-    pool: Pool,
+    pool: Arc<Mutex<Pool>>,
 
     /// shared storage folder for space children
     storage: Storage,
@@ -47,7 +47,7 @@ impl Space {
             storage: Storage::new(parent_discrim).await,
             label,
             discrim: parent_discrim.new_child(),
-            pool: Pool::default(),
+            pool: Arc::new(Mutex::new(Pool::default())),
             subspaces: Arc::new(Mutex::new(Collection::default())),
             focus: Arc::new(Mutex::new(Focus::default())),
             passes: Arc::new(Mutex::new(Passes::default())),
@@ -106,10 +106,6 @@ impl Component for Space {
         &self.discrim
     }
 
-    fn pool(&self) -> &Pool {
-        &self.pool
-    }
-
     fn storage(&self) -> &Storage {
         &self.storage
     }
@@ -121,7 +117,75 @@ impl Component for Space {
             // if the target is self
             Event::RequestPacket(req) if req.get().target() == self.discrim() => {
                 match req.get().content() {
+                    RequestContent::RemoveEntry { label } => {
+                        self.pool.lock().await.remove(label, &self.discrim);
+                        let _ = req.respond(Response::new_with_request(
+                            ResponseContent::Success {
+                                content: ResponseSuccess::RemovedValue,
+                            },
+                            *req.get().id(),
+                        ));
+                    }
+                    RequestContent::Unwatch { label, watcher } => {
+                        // remove watche from pool entry
+                        let res =
+                            if self
+                                .pool
+                                .lock()
+                                .await
+                                .unwatch(label, watcher, self.discrim.clone())
+                            {
+                                ResponseContent::Success {
+                                    content: ResponseSuccess::Unwatched,
+                                }
+                            } else {
+                                ResponseContent::Error {
+                                    content: ResponseError::EntryNotFound,
+                                }
+                            };
+                        let _ = req.respond(Response::new_with_request(res, *req.get().id()));
+                    }
+                    RequestContent::SetEntry { label, value } => {
+                        // set value of a pool entry
+                        // this never fails
+                        self.pool.lock().await.set(label, value.clone());
+                        let _ = req.respond(Response::new_with_request(
+                            ResponseContent::Success {
+                                content: ResponseSuccess::ValueSet,
+                            },
+                            *req.get().id(),
+                        ));
+                    }
+                    RequestContent::WatchInternal(watch) => {
+                        // add a watch item
+                        let res = if self.pool.lock().await.watch(
+                            &watch.label,
+                            watch.sender.clone(),
+                            watch.watcher.clone(),
+                        ) {
+                            ResponseContent::Success {
+                                content: ResponseSuccess::Watching,
+                            }
+                        } else {
+                            ResponseContent::Error {
+                                content: ResponseError::EntryNotFound,
+                            }
+                        };
+                        let _ = req.respond(Response::new_with_request(res, *req.get().id()));
+                    }
+                    RequestContent::GetEntry { label } => {
+                        let res = match self.pool.lock().await.get(label) {
+                            Some(value) => ResponseContent::Success {
+                                content: ResponseSuccess::Value { value },
+                            },
+                            None => ResponseContent::Error {
+                                content: ResponseError::EntryNotFound,
+                            },
+                        };
+                        let _ = req.respond(Response::new_with_request(res, *req.get().id()));
+                    }
                     RequestContent::FocusAt => {
+                        // switch focus to that space, and only that space
                         #[cfg(feature = "log")]
                         log::debug!("{:?} locking focus", self.discrim);
                         let mut focus = self.focus.lock().await;
@@ -155,6 +219,7 @@ impl Component for Space {
                         return false.into();
                     }
                     RequestContent::NewSpace { label } => {
+                        // just add a new entry to subspaces
                         let space = Space::new_with_parent(label.clone(), &self.discrim).await;
                         let _ = req.respond(Response::new_with_request(
                             ResponseContent::Success {
@@ -295,7 +360,11 @@ impl Component for Space {
                     }
                     RequestContent::Render { content, flush } => {
                         // does rendering stuff, no explainations needed
-                        content.draw(*flush);
+                        let flush = *flush;
+                        let content = content.clone();
+                        tokio::task::spawn_blocking(move || content.draw(flush))
+                            .await
+                            .unwrap();
 
                         let _ = req.respond(Response::new_with_request(
                             ResponseContent::Success {
@@ -330,7 +399,9 @@ impl Component for Space {
 
                         self.pass(event).await;
                     }
-                    RequestContent::Subscribe {
+                    RequestContent::GetState { .. }
+                    | RequestContent::Watch { .. }
+                    | RequestContent::Subscribe {
                         component: None, ..
                     }
                     | RequestContent::Unsubscribe {
@@ -349,16 +420,8 @@ impl Component for Space {
                 // to its intended target
                 if let Some(child) = self.discrim.immediate_child(req.get().target().clone()) {
                     if req.get().content() == &RequestContent::FocusAt {
-                        #[cfg(feature = "log")]
-                        log::debug!("{:?} locking focus", self.discrim);
                         let mut focus = self.focus.lock().await;
-                        #[cfg(feature = "log")]
-                        log::debug!("{:?} locked focus", self.discrim);
-                        #[cfg(feature = "log")]
-                        log::debug!("{:?} locking subspaces", self.discrim);
                         let subspaces = self.subspaces.lock().await;
-                        #[cfg(feature = "log")]
-                        log::debug!("{:?} locked subspaces", self.discrim);
 
                         if !subspaces.contains(&child) {
                             let _ = req.respond(Response::new_with_request(
@@ -382,20 +445,21 @@ impl Component for Space {
                                 *focus = Focus::Children(child.clone());
 
                                 let child = subspaces.find_by_discrim(&child).unwrap();
-                                child.pass(event).await;
+                                // this kinda defeats the point of non blocking
+                                // as this might block
+                                // but it shouldnt, and let's just pray on it that its true
+                                //
+                                // event must come after the actual focus or else it might get
+                                // passed to the wrong components
+                                child.pass(event).await.evaluate().await;
                                 child.pass(&mut Event::Focus).await;
                             }
                         } else {
                             *focus = Focus::Children(child.clone());
                             let child = subspaces.find_by_discrim(&child).unwrap();
-                            child.pass(event).await;
+                            child.pass(event).await.evaluate().await;
                             child.pass(&mut Event::Focus).await;
                         }
-
-                        #[cfg(feature = "log")]
-                        log::debug!("{:?} unlocked focus", self.discrim);
-                        #[cfg(feature = "log")]
-                        log::debug!("{:?} unlocked subspaces", self.discrim);
 
                         return false.into();
                     }
@@ -471,27 +535,13 @@ impl Component for Space {
             }
 
             // if all went well then continue to pass down into subspaces
-            #[cfg(feature = "log")]
-            log::debug!("{:?} locking focus", discrim);
             let focus = focus.lock().await.clone();
-            #[cfg(feature = "log")]
-            log::debug!("{:?} locked focus", discrim);
-            #[cfg(feature = "log")]
-            log::debug!("{:?} unlocked focus", discrim);
             if let Focus::Children(discrim) = focus {
-                #[cfg(feature = "log")]
-                log::debug!("{:?} locking subspaces", discrim);
                 let subspace = subspaces
                     .lock()
                     .await
                     .find_by_discrim_arc(&discrim)
                     .unwrap();
-                #[cfg(feature = "log")]
-                log::debug!("{:?} locked subspaces", discrim);
-                #[cfg(feature = "log")]
-                log::debug!("{:?} unlocked subspaces", discrim);
-                #[cfg(feature = "log")]
-                log::debug!("passing {event:?} to {discrim:?}");
                 subspace.pass(&mut event).await.evaluate().await;
             }
 

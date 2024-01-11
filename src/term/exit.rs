@@ -4,9 +4,9 @@ use crate::values::{ROOT, SCREEN};
 use std::{fs, io::Write};
 
 /// run when exiting
-pub fn exit() {
+pub async fn exit() {
     write!(
-        unsafe { SCREEN.get_mut().unwrap() },
+        unsafe { SCREEN.get().unwrap() }.lock().unwrap(),
         "{}{}{}",
         termion::cursor::Show,
         termion::cursor::Restore,
@@ -27,5 +27,7 @@ pub fn exit() {
         .unwrap();
     }
 
+    // drop screen so the term actually gets restored
+    unsafe { SCREEN.take() };
     fs::remove_dir_all(ROOT.get().unwrap()).unwrap();
 }

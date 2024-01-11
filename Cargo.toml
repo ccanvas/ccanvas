@@ -21,3 +21,9 @@ dirs = { version = "5.0", optional = true }
 [features]
 default = []
 log = ["dep:log", "dep:simplelog", "dep:dirs"]
+
+[profile.release]
+strip = true
+lto = true
+opt-level = 3
+panic = "abort"

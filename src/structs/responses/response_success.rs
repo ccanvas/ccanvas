@@ -1,4 +1,5 @@
 use serde::Serialize;
+use serde_json::Value;
 
 use crate::structs::Discriminator;
 
@@ -15,7 +16,7 @@ pub enum ResponseSuccess {
 
     /// listener socket set
     #[serde(rename = "listener set")]
-    ListenerSet,
+    ListenerSet { discrim: Discriminator },
 
     /// component dropped
     #[serde(rename = "dropped")]
@@ -40,4 +41,24 @@ pub enum ResponseSuccess {
     /// focus changed successfully
     #[serde(rename = "focus changed")]
     FocusChanged,
+
+    /// got state
+    #[serde(rename = "value")]
+    Value { value: Value },
+
+    /// set value
+    #[serde(rename = "value set")]
+    ValueSet,
+
+    /// value removed
+    #[serde(rename = "removed value")]
+    RemovedValue,
+
+    /// now watching a value
+    #[serde(rename = "watching")]
+    Watching,
+
+    /// unwatched a value
+    #[serde(rename = "unwatched")]
+    Unwatched,
 }

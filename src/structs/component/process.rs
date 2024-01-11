@@ -1,5 +1,6 @@
 use std::{
     collections::{hash_map::Entry, HashMap},
+    env,
     io::{Read, Write},
     os::unix::net::{UnixListener, UnixStream},
     process::Stdio,
@@ -16,7 +17,7 @@ use tokio::{
     task::JoinHandle,
 };
 
-use crate::traits::Component;
+use crate::{traits::Component, values::FOCUSED};
 
 use crate::structs::*;
 
@@ -29,7 +30,7 @@ pub struct Process {
     discrim: Discriminator,
 
     /// data storage for self
-    pool: Pool,
+    pool: Arc<Mutex<Pool>>,
 
     /// shared storage folder for self
     storage: Storage,
@@ -106,7 +107,6 @@ impl Process {
                 // by default there is no socket
                 let mut socket = None;
                 let mut socket_confirm = Some(set_socket_send);
-                // let child = child;
 
                 while let Some(res) = responder_recv.recv().await {
                     let confirm_handles = confirm_handles.clone();
@@ -149,6 +149,7 @@ impl Process {
                                 stream.flush().unwrap();
                             } else {
                                 // if send failed, it is impossible to get a response message
+                                // so manually remove it to trigger an undelivered response
                                 confirm_handles.lock().await.remove(&res.id());
                             }
                         });
@@ -193,6 +194,14 @@ impl Process {
 
                     // modify requests
                     match request.content_mut() {
+                        RequestContent::Watch { label } => {
+                            // convert a Watch into a WatchInternal
+                            *request.content_mut() = RequestContent::WatchInternal(WatchInternal {
+                                label: std::mem::take(label),
+                                sender: responder.clone(),
+                                watcher: discrim.clone(),
+                            })
+                        }
                         RequestContent::ConfirmRecieve { id, pass } => {
                             // if the request is a confirmation to a response
                             // then confirm the response and unblock the self.pass() thing
@@ -255,10 +264,51 @@ impl Process {
                             let _ = responder.send(Response::new_with_request(
                                 ResponseContent::Success {
                                     // this can never fail
-                                    content: ResponseSuccess::ListenerSet,
+                                    content: ResponseSuccess::ListenerSet {
+                                        discrim: discrim.clone(),
+                                    },
                                 },
                                 *request.id(), // this is a response
                             ));
+                            continue;
+                        }
+                        RequestContent::GetState { label } => {
+                            // get state of self
+                            // will implement getting state of other components
+                            // TODO
+                            let val = match label {
+                                StateValue::Focused => {
+                                    serde_json::to_value(unsafe { FOCUSED.get() }.unwrap()).unwrap()
+                                }
+                                StateValue::IsFocused => serde_json::to_value(
+                                    unsafe { FOCUSED.get() }.unwrap().starts_with(&discrim),
+                                )
+                                .unwrap(),
+                                StateValue::TermSize => {
+                                    #[derive(serde::Serialize)]
+                                    struct TermSize {
+                                        x: u32,
+                                        y: u32,
+                                    }
+                                    let (x, y) = termion::terminal_size().unwrap();
+                                    serde_json::to_value(TermSize {
+                                        x: x as u32,
+                                        y: y as u32,
+                                    })
+                                    .unwrap()
+                                }
+                                StateValue::WorkingDir => {
+                                    serde_json::to_value(env::current_dir().unwrap()).unwrap()
+                                }
+                            };
+
+                            let _ = responder.send(Response::new_with_request(
+                                ResponseContent::Success {
+                                    content: ResponseSuccess::Value { value: val },
+                                },
+                                *request.id(),
+                            ));
+
                             continue;
                         }
                         RequestContent::Drop { discrim: to_drop } => {
@@ -279,9 +329,15 @@ impl Process {
                                 *request.target_mut() = discrim.clone().immediate_parent().unwrap();
                             }
                         }
+                        RequestContent::Unwatch { watcher, .. } => *watcher = discrim.clone(),
                         // mark self as sender
                         RequestContent::Message { sender, .. } => *sender = discrim.clone(),
-                        RequestContent::NewSpace { .. } | RequestContent::FocusAt => {}
+                        RequestContent::NewSpace { .. }
+                        | RequestContent::FocusAt
+                        | RequestContent::SetEntry { .. }
+                        | RequestContent::RemoveEntry { .. }
+                        | RequestContent::GetEntry { .. } => {}
+                        RequestContent::WatchInternal(_) => unreachable!("boom"),
                     }
 
                     let responder = responder.clone();
@@ -305,7 +361,7 @@ impl Process {
             child,
             label,
             storage,
-            pool: Pool::default(),
+            pool: Arc::new(Mutex::new(Pool::default())),
             discrim,
             command: [command].into_iter().chain(args).collect(),
             listener,
@@ -317,7 +373,15 @@ impl Process {
 
     pub async fn handle(&self, packet: &mut Packet<Request, Response>) {
         match packet.get().content() {
-            // if it is a setsocket
+            RequestContent::RemoveEntry { label } => {
+                self.pool.lock().await.remove(label, &self.discrim);
+                let _ = packet.respond(Response::new_with_request(
+                    ResponseContent::Success {
+                        content: ResponseSuccess::RemovedValue,
+                    },
+                    *packet.get().id(),
+                ));
+            }
             RequestContent::Message {
                 content,
                 sender,
@@ -345,15 +409,74 @@ impl Process {
                     *packet.get().id(),
                 ));
             }
+            RequestContent::GetEntry { label } => {
+                // just return an entry from pool, nothing special
+                let res = match self.pool.lock().await.get(label) {
+                    Some(value) => ResponseContent::Success {
+                        content: ResponseSuccess::Value { value },
+                    },
+                    None => ResponseContent::Error {
+                        content: ResponseError::EntryNotFound,
+                    },
+                };
+                let _ = packet.respond(Response::new_with_request(res, *packet.get().id()));
+            }
+            RequestContent::SetEntry { label, value } => {
+                // set an entry, this never fails
+                self.pool.lock().await.set(label, value.clone());
+                let _ = packet.respond(Response::new_with_request(
+                    ResponseContent::Success {
+                        content: ResponseSuccess::ValueSet,
+                    },
+                    *packet.get().id(),
+                ));
+            }
+            RequestContent::WatchInternal(watch) => {
+                // add a watcher to an entry
+                let res = if self.pool.lock().await.watch(
+                    &watch.label,
+                    watch.sender.clone(),
+                    watch.watcher.clone(),
+                ) {
+                    ResponseContent::Success {
+                        content: ResponseSuccess::Watching,
+                    }
+                } else {
+                    ResponseContent::Error {
+                        content: ResponseError::EntryNotFound,
+                    }
+                };
+                let _ = packet.respond(Response::new_with_request(res, *packet.get().id()));
+            }
+            RequestContent::Unwatch { label, watcher } => {
+                // remove watcher from entry
+                let res = if self
+                    .pool
+                    .lock()
+                    .await
+                    .unwatch(label, watcher, self.discrim.clone())
+                {
+                    ResponseContent::Success {
+                        content: ResponseSuccess::Unwatched,
+                    }
+                } else {
+                    ResponseContent::Error {
+                        content: ResponseError::EntryNotFound,
+                    }
+                };
+                let _ = packet.respond(Response::new_with_request(res, *packet.get().id()));
+            }
             // confirmreceive gets filtered out and handles in the listener loop
             // so we will never get it
             RequestContent::ConfirmRecieve { .. }
+            | RequestContent::Watch { .. }
             | RequestContent::Unsubscribe { .. }
             | RequestContent::Drop { .. }
             | RequestContent::Subscribe { .. }
             | RequestContent::SetSocket { .. }
             | RequestContent::NewSpace { .. }
             | RequestContent::FocusAt
+            | RequestContent::GetState { .. }
             | RequestContent::Render { .. } => {
                 unreachable!("not a real request")
             }
@@ -377,10 +500,6 @@ impl Component for Process {
 
     fn discrim(&self) -> &Discriminator {
         &self.discrim
-    }
-
-    fn pool(&self) -> &Pool {
-        &self.pool
     }
 
     fn storage(&self) -> &Storage {

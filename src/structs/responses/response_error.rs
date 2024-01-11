@@ -9,4 +9,7 @@ pub enum ResponseError {
     /// spawning process failed
     #[serde(rename = "spawn failed")]
     SpawnFailed,
+    /// pool entry not found
+    #[serde(rename = "entry not found")]
+    EntryNotFound,
 }

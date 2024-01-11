@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 
-use crate::structs::{Discriminator, Event, Pool, Storage, Unevaluated};
+use crate::structs::{Discriminator, Event, Storage, Unevaluated};
 
 #[async_trait]
 /// a unit of "something"
@@ -10,9 +10,6 @@ pub trait Component {
 
     /// unique identifier which one it is
     fn discrim(&self) -> &Discriminator;
-
-    /// pool of data
-    fn pool(&self) -> &Pool;
 
     /// folder for shared storage
     fn storage(&self) -> &Storage;

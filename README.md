@@ -65,4 +65,4 @@ The space will then decide where should the event be passed to. First it will pa
 
 ## TODO
 
-One more feature needed before I work on a window manager component - get properties calls, such as getting screen size without waiting for a resize event.
+One more feature needed before I work on a window manager component - list components in a space.

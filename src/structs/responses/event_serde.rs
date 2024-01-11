@@ -1,6 +1,7 @@
 use crate::structs::{Discriminator, Event, KeyEvent, MouseEvent};
 
 use serde::Serialize;
+use serde_json::Value;
 
 #[derive(Serialize, Clone, PartialEq, Debug)]
 #[serde(tag = "type")]
@@ -25,6 +26,17 @@ pub enum EventSerde {
     Focused,
     #[serde(rename = "unfocused")]
     Unfocused,
+    #[serde(rename = "value updated")]
+    ValueUpdated {
+        label: String,
+        new: Value,
+        discrim: Discriminator,
+    },
+    #[serde(rename = "value removed")]
+    ValueRemoved {
+        label: String,
+        discrim: Discriminator,
+    },
 }
 
 impl EventSerde {
