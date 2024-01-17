@@ -1,3 +1,5 @@
+use std::sync::Mutex;
+
 use crate::structs::{Discriminator, Event, Packet, Response, ResponseContent, Subscription};
 
 use super::RequestContent;
@@ -16,10 +18,10 @@ pub struct Request {
 }
 
 /// for generated requests not coming from a process
-static mut REQ_ALTID: OnceCell<u32> = OnceCell::const_new_with(u32::MAX);
+static REQ_ALTID: OnceCell<Mutex<u32>> = OnceCell::const_new_with(Mutex::new(u32::MAX));
 
 fn req_id() -> u32 {
-    let id = unsafe { REQ_ALTID.get_mut() }.unwrap();
+    let mut id = REQ_ALTID.get().unwrap().lock().unwrap();
     *id -= 1;
     *id
 }

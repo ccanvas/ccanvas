@@ -46,7 +46,7 @@ impl RenderRequest {
         match self {
             Self::SetChar { x, y, c } => {
                 write!(
-                    unsafe { SCREEN.get().unwrap().lock().unwrap() },
+                    SCREEN.get().unwrap().lock().unwrap().as_mut().unwrap(),
                     "{}{c}",
                     termion::cursor::Goto(*x as u16 + 1, *y as u16 + 1)
                 )
@@ -54,7 +54,7 @@ impl RenderRequest {
             }
             Self::SetCharColoured { x, y, c, fg, bg } => {
                 write!(
-                    unsafe { SCREEN.get().unwrap().lock().unwrap() },
+                    SCREEN.get().unwrap().lock().unwrap().as_mut().unwrap(),
                     "{}{}{}{c}{}{}",
                     color::Fg(*fg),
                     color::Bg(*bg),
@@ -67,47 +67,47 @@ impl RenderRequest {
             Self::Flush => flush = true,
             Self::SetCursorStyle { style } => match style {
                 CursorStyle::BlinkingBar => write!(
-                    unsafe { SCREEN.get().unwrap().lock().unwrap() },
+                    SCREEN.get().unwrap().lock().unwrap().as_mut().unwrap(),
                     "{}",
                     cursor::BlinkingBar
                 ),
                 CursorStyle::BlinkingBlock => write!(
-                    unsafe { SCREEN.get().unwrap().lock().unwrap() },
+                    SCREEN.get().unwrap().lock().unwrap().as_mut().unwrap(),
                     "{}",
                     cursor::BlinkingBlock
                 ),
                 CursorStyle::BlinkingUnderline => write!(
-                    unsafe { SCREEN.get().unwrap().lock().unwrap() },
+                    SCREEN.get().unwrap().lock().unwrap().as_mut().unwrap(),
                     "{}",
                     cursor::BlinkingUnderline
                 ),
                 CursorStyle::SteadyBar => {
                     write!(
-                        unsafe { SCREEN.get().unwrap().lock().unwrap() },
+                        SCREEN.get().unwrap().lock().unwrap().as_mut().unwrap(),
                         "{}",
                         cursor::SteadyBar
                     )
                 }
                 CursorStyle::SteadyBlock => write!(
-                    unsafe { SCREEN.get().unwrap().lock().unwrap() },
+                    SCREEN.get().unwrap().lock().unwrap().as_mut().unwrap(),
                     "{}",
                     cursor::SteadyBlock
                 ),
                 CursorStyle::SteadyUnderline => write!(
-                    unsafe { SCREEN.get().unwrap().lock().unwrap() },
+                    SCREEN.get().unwrap().lock().unwrap().as_mut().unwrap(),
                     "{}",
                     cursor::SteadyUnderline
                 ),
             }
             .unwrap(),
             Self::HideCursor => write!(
-                unsafe { SCREEN.get().unwrap().lock().unwrap() },
+                SCREEN.get().unwrap().lock().unwrap().as_mut().unwrap(),
                 "{}",
                 cursor::Hide
             )
             .unwrap(),
             Self::ShowCursor => write!(
-                unsafe { SCREEN.get().unwrap().lock().unwrap() },
+                SCREEN.get().unwrap().lock().unwrap().as_mut().unwrap(),
                 "{}",
                 cursor::Show
             )
@@ -118,7 +118,7 @@ impl RenderRequest {
                 }
             }
             Self::ClearAll => write!(
-                unsafe { SCREEN.get().unwrap().lock().unwrap() },
+                SCREEN.get().unwrap().lock().unwrap().as_mut().unwrap(),
                 "{}",
                 termion::clear::All
             )
@@ -126,7 +126,13 @@ impl RenderRequest {
         }
 
         if flush {
-            unsafe { SCREEN.get().unwrap().lock().unwrap() }
+            SCREEN
+                .get()
+                .unwrap()
+                .lock()
+                .unwrap()
+                .as_mut()
+                .unwrap()
                 .flush()
                 .unwrap();
         }

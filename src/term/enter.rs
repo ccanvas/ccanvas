@@ -54,6 +54,6 @@ pub fn enter() {
     );
     write!(screen, "{}", termion::clear::All).unwrap();
     screen.flush().unwrap();
-    unsafe { FOCUSED.set(Discriminator::master()) }.unwrap();
-    let _ = unsafe { SCREEN.set(Mutex::new(screen)) };
+    FOCUSED.set(Mutex::new(Discriminator::master())).unwrap();
+    let _ = SCREEN.set(Mutex::new(Some(screen)));
 }

@@ -1,10 +1,12 @@
+use std::sync::Mutex;
+
 use serde::{Deserialize, Serialize};
 use tokio::sync::OnceCell;
 
-static mut DISCRIM: OnceCell<u32> = OnceCell::const_new_with(0);
+static DISCRIM: OnceCell<Mutex<u32>> = OnceCell::const_new_with(Mutex::new(0));
 /// get a unique discriminator chunk
 pub fn discrim() -> u32 {
-    let discrim = unsafe { DISCRIM.get_mut().unwrap() };
+    let mut discrim = DISCRIM.get().unwrap().lock().unwrap();
     *discrim += 1;
     *discrim
 }

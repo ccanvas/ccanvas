@@ -7,6 +7,7 @@ use tokio::sync::Mutex;
 use crate::traits::Component;
 
 use crate::structs::*;
+use crate::values::FOCUSED;
 
 /// the basic unit of display
 pub struct Space {
@@ -209,6 +210,8 @@ impl Component for Space {
                         }
                         #[cfg(feature = "log")]
                         log::debug!("{:?} unlocked focus", self.discrim);
+
+                        *FOCUSED.get().unwrap().lock().unwrap() = self.discrim.clone();
                         let _ = req.respond(Response::new_with_request(
                             ResponseContent::Success {
                                 content: ResponseSuccess::FocusChanged,

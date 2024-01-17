@@ -5,7 +5,8 @@ use tokio::sync::OnceCell;
 
 use crate::structs::Discriminator;
 
-pub static mut FOCUSED: OnceCell<Discriminator> = OnceCell::const_new();
-pub static mut SCREEN: OnceCell<Mutex<MouseTerminal<AlternateScreen<RawTerminal<Stdout>>>>> =
-    OnceCell::const_new();
+type Term = MouseTerminal<AlternateScreen<RawTerminal<Stdout>>>;
+
+pub static FOCUSED: OnceCell<Mutex<Discriminator>> = OnceCell::const_new();
+pub static SCREEN: OnceCell<Mutex<Option<Term>>> = OnceCell::const_new();
 pub static ROOT: OnceCell<PathBuf> = OnceCell::const_new();

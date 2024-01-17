@@ -278,10 +278,10 @@ impl Process {
                             // TODO
                             let val = match label {
                                 StateValue::Focused => {
-                                    serde_json::to_value(unsafe { FOCUSED.get() }.unwrap()).unwrap()
+                                    serde_json::to_value(FOCUSED.get().unwrap()).unwrap()
                                 }
                                 StateValue::IsFocused => serde_json::to_value(
-                                    unsafe { FOCUSED.get() }.unwrap().starts_with(&discrim),
+                                    FOCUSED.get().unwrap().lock().unwrap().starts_with(&discrim),
                                 )
                                 .unwrap(),
                                 StateValue::TermSize => {

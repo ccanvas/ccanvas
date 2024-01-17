@@ -1,12 +1,14 @@
+use std::sync::Mutex;
+
 use serde::Serialize;
 use tokio::sync::OnceCell;
 
 use super::ResponseContent;
 
-static mut RESPONSE_ID: OnceCell<u32> = OnceCell::const_new_with(0);
+static RESPONSE_ID: OnceCell<Mutex<u32>> = OnceCell::const_new_with(Mutex::new(0));
 
 fn resp_id() -> u32 {
-    let id = unsafe { RESPONSE_ID.get_mut() }.unwrap();
+    let mut id = RESPONSE_ID.get().unwrap().lock().unwrap();
     *id += 1;
     *id
 }

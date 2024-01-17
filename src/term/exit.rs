@@ -6,7 +6,7 @@ use std::{fs, io::Write};
 /// run when exiting
 pub async fn exit() {
     write!(
-        unsafe { SCREEN.get().unwrap() }.lock().unwrap(),
+        SCREEN.get().unwrap().lock().unwrap().as_mut().unwrap(),
         "{}{}{}",
         termion::cursor::Show,
         termion::cursor::Restore,
@@ -28,6 +28,6 @@ pub async fn exit() {
     }
 
     // drop screen so the term actually gets restored
-    unsafe { SCREEN.take() };
+    *SCREEN.get().unwrap().lock().unwrap() = None;
     fs::remove_dir_all(ROOT.get().unwrap()).unwrap();
 }
