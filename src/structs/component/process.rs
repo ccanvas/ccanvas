@@ -433,20 +433,17 @@ impl Process {
             }
             RequestContent::WatchInternal(watch) => {
                 // add a watcher to an entry
-                let res = if self.pool.lock().await.watch(
-                    &watch.label,
+                self.pool.lock().await.watch(
+                    watch.label.clone(),
                     watch.sender.clone(),
                     watch.watcher.clone(),
-                ) {
+                );
+                let _ = packet.respond(Response::new_with_request(
                     ResponseContent::Success {
                         content: ResponseSuccess::Watching,
-                    }
-                } else {
-                    ResponseContent::Error {
-                        content: ResponseError::EntryNotFound,
-                    }
-                };
-                let _ = packet.respond(Response::new_with_request(res, *packet.get().id()));
+                    },
+                    *packet.get().id(),
+                ));
             }
             RequestContent::Unwatch { label, watcher } => {
                 // remove watcher from entry

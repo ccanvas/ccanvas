@@ -14,7 +14,9 @@ pub struct Pool {
 impl Pool {
     /// get a key value, similar to a regular hashap
     pub fn get(&mut self, label: &str) -> Option<Value> {
-        self.map.get(label).map(PoolItem::value).map(Value::clone)
+        self.map
+            .get(label)
+            .map(|item| item.value.as_ref().unwrap().clone())
     }
 
     /// set a value, this will call all the watchers
@@ -29,29 +31,24 @@ impl Pool {
 
     /// remove a value, this will call all the watchers
     /// return false if no such entry exist
-    pub fn remove(&mut self, label: &str, discrim: &Discriminator) -> bool {
-        match self.map.remove(label) {
-            Some(entry) => entry.remove(label, discrim),
-            None => return false,
+    pub fn remove(&mut self, label: &str, discrim: &Discriminator) {
+        if let Some(entry) = self.map.get_mut(label) {
+            entry.remove(label, discrim);
+            if entry.is_empty() {
+                self.map.remove(label);
+            }
         }
-
-        true
     }
 
     /// insert a watch to an entry
     /// return false if no such entry exist
     pub fn watch(
         &mut self,
-        label: &str,
+        label: String,
         listener: UnboundedSender<Response>,
         discrim: Discriminator,
-    ) -> bool {
-        match self.map.get_mut(label) {
-            Some(entry) => entry.watch(discrim, listener),
-            None => return false,
-        }
-
-        true
+    ) {
+        self.map.entry(label).or_default().watch(discrim, listener);
     }
 
     /// remove watche from entry
@@ -61,17 +58,25 @@ impl Pool {
         discrim: &Discriminator,
         self_discrim: Discriminator,
     ) -> bool {
-        self.map.get_mut(label).is_some_and(|entry| {
-            entry.unwatch(discrim, label.to_string(), self_discrim);
-            true
-        })
+        match self.map.get_mut(label) {
+            Some(entry) => {
+                entry.unwatch(discrim, label.to_string(), self_discrim);
+
+                if entry.is_empty() {
+                    self.map.remove(label);
+                }
+                true
+            }
+            None => false,
+        }
     }
 }
 
+#[derive(Default)]
 /// a single entry in pool
 pub struct PoolItem {
     /// the actual value of the entry
-    value: Value,
+    value: Option<Value>,
     /// watchers of the entry
     listener: HashMap<Discriminator, UnboundedSender<Response>>,
 }
@@ -80,12 +85,12 @@ impl PoolItem {
     /// create new self with a value
     pub fn new(value: Value) -> Self {
         Self {
-            value,
+            value: Some(value),
             listener: HashMap::new(),
         }
     }
 
-    pub fn value(&self) -> &Value {
+    pub fn value(&self) -> &Option<Value> {
         &self.value
     }
 
@@ -110,7 +115,7 @@ impl PoolItem {
     /// never fails
     /// call all watchers and remove the dead ones
     pub fn set(&mut self, label: &str, value: Value) {
-        self.value = value;
+        self.value = Some(value.clone());
 
         let mut dead_senders = Vec::new();
         self.listener.iter().for_each(|(discrim, listener)| {
@@ -118,7 +123,7 @@ impl PoolItem {
                 .send(Response::new(ResponseContent::Event {
                     content: EventSerde::ValueUpdated {
                         label: label.to_string(),
-                        new: self.value.clone(),
+                        new: value.clone(),
                         discrim: discrim.clone(),
                     },
                 }))
@@ -134,7 +139,9 @@ impl PoolItem {
     }
 
     /// remove an entry
-    pub fn remove(&self, label: &str, self_discrim: &Discriminator) {
+    pub fn remove(&mut self, label: &str, self_discrim: &Discriminator) {
+        self.value = None;
+
         self.listener.values().for_each(|listener| {
             let _ = listener.send(Response::new(ResponseContent::Event {
                 content: EventSerde::ValueRemoved {
@@ -143,5 +150,10 @@ impl PoolItem {
                 },
             }));
         })
+    }
+
+    /// returns true if there is absolutely nothing to keep in this entry
+    pub fn is_empty(&self) -> bool {
+        self.value.is_none() && self.listener.is_empty()
     }
 }

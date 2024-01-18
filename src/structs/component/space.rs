@@ -159,20 +159,17 @@ impl Component for Space {
                     }
                     RequestContent::WatchInternal(watch) => {
                         // add a watch item
-                        let res = if self.pool.lock().await.watch(
-                            &watch.label,
+                        self.pool.lock().await.watch(
+                            watch.label.clone(),
                             watch.sender.clone(),
                             watch.watcher.clone(),
-                        ) {
+                        );
+                        let _ = req.respond(Response::new_with_request(
                             ResponseContent::Success {
                                 content: ResponseSuccess::Watching,
-                            }
-                        } else {
-                            ResponseContent::Error {
-                                content: ResponseError::EntryNotFound,
-                            }
-                        };
-                        let _ = req.respond(Response::new_with_request(res, *req.get().id()));
+                            },
+                            *req.get().id(),
+                        ));
                     }
                     RequestContent::GetEntry { label } => {
                         let res = match self.pool.lock().await.get(label) {
