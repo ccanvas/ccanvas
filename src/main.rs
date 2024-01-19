@@ -8,9 +8,30 @@ use tokio::runtime::Runtime;
 
 fn main() {
     let args: Vec<String> = env::args().skip(1).collect();
-    if args.len() < 2 {
-        println!("Bad arguments: expect `ccanvas [label] [command] (args..)`");
-        return;
+
+    let mut commands = Vec::new();
+    let mut command = Vec::new();
+
+    for arg in args.iter() {
+
+        if arg == "$$" {
+            if command.len() < 2 {
+                println!("Bad arguments: expect `ccanvas [label] [command] (args..)`");
+                return;
+            }
+            commands.push(std::mem::take(&mut command));
+            continue;
+        }
+        
+        command.push(arg)
+    }
+
+    if !command.is_empty() {
+        if command.len() < 2 {
+            println!("Bad arguments: expect `ccanvas [label] [command] (args..)`");
+            return;
+        }
+        commands.push(std::mem::take(&mut command));
     }
 
     let runtime = Runtime::new().unwrap();
