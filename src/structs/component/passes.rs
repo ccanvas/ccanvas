@@ -1,4 +1,7 @@
-use std::collections::{hash_map::Entry, HashMap};
+use std::{
+    cmp::Ordering,
+    collections::{hash_map::Entry, HashMap},
+};
 
 use super::{Discriminator, Subscription};
 
@@ -17,6 +20,11 @@ impl PassItem {
     /// get discrim of self
     pub fn discrim(&self) -> &Discriminator {
         &self.discrim
+    }
+
+    /// return priority of self
+    pub fn priority(&self) -> Option<u32> {
+        self.priority
     }
 
     /// convenience function to create new self
@@ -40,12 +48,12 @@ impl PartialOrd for PassItem {
 impl Ord for PassItem {
     // to make lower numbers come first, Nones come last
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        if self.priority == other.priority {
-            std::cmp::Ordering::Equal
-        } else if other.priority.is_none() {
-            std::cmp::Ordering::Less
-        } else {
-            self.priority.unwrap().cmp(&other.priority.unwrap())
+        match (self.priority, other.priority) {
+            (a, b) if a == b => Ordering::Equal,
+            (None, None) => Ordering::Equal,
+            (Some(_), None) => Ordering::Less,
+            (None, Some(_)) => Ordering::Greater,
+            (Some(a), Some(b)) => a.cmp(&b),
         }
     }
 }

@@ -61,4 +61,12 @@ pub enum ResponseSuccess {
     /// unwatched a value
     #[serde(rename = "unwatched")]
     Unwatched,
+
+    /// suppressing a channel
+    #[serde(rename = "suppressed")]
+    Suppressed { id: u32 },
+
+    /// unsuppressing a channel
+    #[serde(rename = "unsuppressed")]
+    Unsuppressed,
 }

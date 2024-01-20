@@ -63,6 +63,7 @@ impl Event {
     pub fn subscriptions(&self) -> Vec<Subscription> {
         match self {
             Self::KeyPress(key) => vec![
+                Subscription::Everything,
                 Subscription::AllKeyPresses,
                 Subscription::SpecificKeyPress { key: *key },
                 Subscription::SpecificKeyCode { code: key.code },
@@ -71,20 +72,22 @@ impl Event {
                 },
             ],
             Self::Message { sender, .. } => vec![
+                Subscription::Everything,
                 Subscription::AllMessages,
                 Subscription::SpecificMessage {
                     source: sender.clone(),
                 },
             ],
             Self::MouseEvent(mouse) => vec![
+                Subscription::Everything,
                 Subscription::AllMouseEvents,
                 Subscription::SpecificMouseEvent {
                     mouse: mouse.mousetype,
                 },
             ],
-            Self::ScreenResize(..) => vec![Subscription::ScreenResize],
-            Self::Focus { .. } => vec![Subscription::Focused],
-            Self::Unfocus => vec![Subscription::Unfocused],
+            Self::ScreenResize(..) => vec![Subscription::Everything, Subscription::ScreenResize],
+            Self::Focus { .. } => vec![Subscription::Everything, Subscription::Focused],
+            Self::Unfocus => vec![Subscription::Everything, Subscription::Unfocused],
             Self::RequestPacket(_) => Vec::new(),
         }
     }

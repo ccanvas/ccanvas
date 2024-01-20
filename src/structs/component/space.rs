@@ -34,7 +34,9 @@ pub struct Space {
 
     /// process pool
     processes: Arc<Mutex<Collection<Process>>>,
-    // processes: Arc<Mutex<Collection<Process>>>,
+
+    /// channel suppressors
+    suppressors: Arc<Mutex<Suppressors>>,
 }
 
 impl Space {
@@ -53,6 +55,7 @@ impl Space {
             focus: Arc::new(Mutex::new(Focus::default())),
             passes: Arc::new(Mutex::new(Passes::default())),
             processes: Arc::new(Mutex::new(Collection::default())),
+            suppressors: Arc::new(Mutex::new(Suppressors::default())),
         }
     }
 
@@ -77,7 +80,7 @@ impl Space {
             let arc = arc.clone();
             // pass the event to master space
             tokio::spawn(async move {
-                arc.pass(&mut event).await;
+                arc.pass(&mut event, None).await;
             });
         }
     }
@@ -111,13 +114,36 @@ impl Component for Space {
         &self.storage
     }
 
-    async fn pass(&self, event: &mut Event) -> Unevaluated<bool> {
+    async fn pass(&self, event: &mut Event, suppress_level: Option<u32>) -> Unevaluated<bool> {
         #[cfg(feature = "log")]
         log::debug!("{:?} got event {event:?}", self.discrim);
         match event {
             // if the target is self
             Event::RequestPacket(req) if req.get().target() == self.discrim() => {
                 match req.get().content() {
+                    RequestContent::Suppress { channel, priority } => {
+                        let _ = req.respond(Response::new_with_request(
+                            ResponseContent::Success {
+                                content: ResponseSuccess::Suppressed {
+                                    id: self
+                                        .suppressors
+                                        .lock()
+                                        .await
+                                        .insert(channel.clone(), *priority),
+                                },
+                            },
+                            *req.get().id(),
+                        ));
+                    }
+                    RequestContent::Unsuppress { channel, id } => {
+                        self.suppressors.lock().await.remove(channel.clone(), *id);
+                        let _ = req.respond(Response::new_with_request(
+                            ResponseContent::Success {
+                                content: ResponseSuccess::Unsuppressed,
+                            },
+                            *req.get().id(),
+                        ));
+                    }
                     RequestContent::RemoveEntry { label } => {
                         self.pool.lock().await.remove(label, &self.discrim);
                         let _ = req.respond(Response::new_with_request(
@@ -197,7 +223,7 @@ impl Component for Space {
                                 .await
                                 .find_by_discrim(discrim)
                                 .unwrap()
-                                .pass(&mut Event::Unfocus)
+                                .pass(&mut Event::Unfocus, None)
                                 .await;
                             #[cfg(feature = "log")]
                             log::debug!("{:?} locked subspaces", self.discrim);
@@ -397,7 +423,7 @@ impl Component for Space {
                             content,
                         };
 
-                        self.pass(event).await;
+                        self.pass(event, None).await;
                     }
                     RequestContent::GetState { .. }
                     | RequestContent::Watch { .. }
@@ -435,12 +461,12 @@ impl Component for Space {
                         if let Focus::Children(focused) = &*focus {
                             if req.get().target().starts_with(focused) {
                                 let subspace = subspaces.find_by_discrim_arc(&child).unwrap();
-                                subspace.pass(event).await;
+                                subspace.pass(event, None).await;
                             } else {
                                 subspaces
                                     .find_by_discrim(focused)
                                     .unwrap()
-                                    .pass(&mut Event::Unfocus)
+                                    .pass(&mut Event::Unfocus, None)
                                     .await;
                                 *focus = Focus::Children(child.clone());
 
@@ -451,14 +477,14 @@ impl Component for Space {
                                 //
                                 // event must come after the actual focus or else it might get
                                 // passed to the wrong components
-                                child.pass(event).await.evaluate().await;
-                                child.pass(&mut Event::Focus).await;
+                                child.pass(event, None).await.evaluate().await;
+                                child.pass(&mut Event::Focus, None).await;
                             }
                         } else {
                             *focus = Focus::Children(child.clone());
                             let child = subspaces.find_by_discrim(&child).unwrap();
-                            child.pass(event).await.evaluate().await;
-                            child.pass(&mut Event::Focus).await;
+                            child.pass(event, None).await.evaluate().await;
+                            child.pass(&mut Event::Focus, None).await;
                         }
 
                         return false.into();
@@ -475,7 +501,7 @@ impl Component for Space {
                                 .iter()
                                 .any(|item| item.discrim() == proc.discrim())
                             {
-                                proc.pass(event).await;
+                                proc.pass(event, None).await;
                             } else {
                                 let _ = req.respond(Response::new_with_request(
                                     ResponseContent::Undelivered,
@@ -483,12 +509,12 @@ impl Component for Space {
                                 ));
                             }
                         } else {
-                            proc.pass(event).await;
+                            proc.pass(event, None).await;
                         }
                     } else if let Some(space) =
                         self.subspaces.lock().await.find_by_discrim_arc(&child)
                     {
-                        space.pass(event).await;
+                        space.pass(event, None).await;
                     } else {
                         let _ = req.respond(Response::new(ResponseContent::Undelivered));
                     }
@@ -501,8 +527,25 @@ impl Component for Space {
             _ => {}
         }
 
+        #[cfg(feature = "log")]
+        log::debug!("got here 1");
+
+        let subscriptions = event.subscriptions();
         // all components listening to this event
-        let targets = self.passes.lock().await.subscribers(&event.subscriptions());
+        let targets = self.passes.lock().await.subscribers(&subscriptions);
+        #[cfg(feature = "log")]
+        log::debug!("got here 2");
+        let suppressors_mutex = self.suppressors.clone();
+        let suppressors = self.suppressors.lock().await;
+        #[cfg(feature = "log")]
+        log::debug!("got here 3");
+        let mut current_suppress_level =
+            match (suppressors.suppress_level(&subscriptions), suppress_level) {
+                (Some(a), Some(b)) => Some(a.min(b)),
+                (Some(c), None) | (None, Some(c)) => Some(c),
+                (None, None) => None,
+            };
+        let mut suppressor_state = suppressors.state_id();
 
         let processes = self.processes.clone();
         let mut event = event.clone();
@@ -513,15 +556,46 @@ impl Component for Space {
         let uneval = tokio::spawn(async move {
             // repeat until someone decide to capture the event
             for target in targets {
+                let suppressors = suppressors_mutex.lock().await;
+                let new_state = suppressors.state_id();
+                if new_state != suppressor_state {
+                    current_suppress_level =
+                        match (suppressors.suppress_level(&subscriptions), suppress_level) {
+                            (Some(a), Some(b)) => Some(a.min(b)),
+                            (Some(c), None) | (None, Some(c)) => Some(c),
+                            (None, None) => None,
+                        };
+                    suppressor_state = new_state;
+                }
+
+                if current_suppress_level.is_some_and(|current_suppress_level| {
+                    !target
+                        .priority()
+                        .is_some_and(|target| target <= current_suppress_level)
+                }) {
+                    continue;
+                }
+
+                drop(suppressors);
+
                 #[cfg(feature = "log")]
                 log::debug!("passing {event:?} to {target:?}");
-                let res = processes
+                let process = processes
                     .lock()
                     .await
                     .find_by_discrim_arc(target.discrim())
-                    .unwrap()
-                    .pass(&mut event)
-                    .await;
+                    .unwrap();
+
+                let suppress_level = match (
+                    current_suppress_level,
+                    process.suppress_level(&subscriptions).await,
+                ) {
+                    (Some(a), Some(b)) => Some(a.min(b)),
+                    (Some(c), None) | (None, Some(c)) => Some(c),
+                    (None, None) => None,
+                };
+
+                let res = process.pass(&mut event, suppress_level).await;
                 let res = res.evaluate().await;
                 if !res {
                     #[cfg(feature = "log")]
@@ -542,7 +616,11 @@ impl Component for Space {
                     .await
                     .find_by_discrim_arc(&discrim)
                     .unwrap();
-                subspace.pass(&mut event).await.evaluate().await;
+                subspace
+                    .pass(&mut event, suppress_level)
+                    .await
+                    .evaluate()
+                    .await;
             }
 
             true

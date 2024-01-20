@@ -8,6 +8,9 @@ use super::Discriminator;
 #[derive(Hash, PartialEq, Eq, Serialize, Deserialize, Debug, Clone)]
 #[serde(tag = "type")]
 pub enum Subscription {
+    /// Every, single, event
+    #[serde(rename = "everything")]
+    Everything,
     /// subscribes to all key press events
     #[serde(rename = "all key presses")]
     AllKeyPresses,

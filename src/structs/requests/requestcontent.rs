@@ -120,6 +120,20 @@ pub enum RequestContent {
         watcher: Discriminator,
     },
 
+    /// suppress a channel
+    #[serde(rename = "suppress")]
+    Suppress {
+        channel: Subscription,
+        priority: u32,
+    },
+
+    /// unsuppress a channel
+    #[serde(rename = "unsuppress")]
+    Unsuppress {
+        channel: Subscription,
+        id: u32,
+    },
+
     WatchInternal(WatchInternal),
 }
 

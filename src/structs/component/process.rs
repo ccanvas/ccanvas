@@ -52,6 +52,9 @@ pub struct Process {
 
     /// event confirm recieve senders
     confirm_handles: Arc<Mutex<HashMap<u32, oneshot::Sender<bool>>>>,
+
+    /// channel suppressors
+    suppressors: Arc<Mutex<Suppressors>>,
 }
 
 impl PartialEq for Process {
@@ -334,6 +337,8 @@ impl Process {
                         RequestContent::Message { sender, .. } => *sender = discrim.clone(),
                         RequestContent::NewSpace { .. }
                         | RequestContent::FocusAt
+                        | RequestContent::Suppress { .. }
+                        | RequestContent::Unsuppress { .. }
                         | RequestContent::SetEntry { .. }
                         | RequestContent::RemoveEntry { .. }
                         | RequestContent::GetEntry { .. } => {}
@@ -368,11 +373,35 @@ impl Process {
             responder,
             res: responder_send,
             confirm_handles,
+            suppressors: Arc::new(Mutex::new(Suppressors::default())),
         })
     }
 
     pub async fn handle(&self, packet: &mut Packet<Request, Response>) {
         match packet.get().content() {
+            RequestContent::Suppress { channel, priority } => {
+                let _ = packet.respond(Response::new_with_request(
+                    ResponseContent::Success {
+                        content: ResponseSuccess::Suppressed {
+                            id: self
+                                .suppressors
+                                .lock()
+                                .await
+                                .insert(channel.clone(), *priority),
+                        },
+                    },
+                    *packet.get().id(),
+                ));
+            }
+            RequestContent::Unsuppress { channel, id } => {
+                self.suppressors.lock().await.remove(channel.clone(), *id);
+                let _ = packet.respond(Response::new_with_request(
+                    ResponseContent::Success {
+                        content: ResponseSuccess::Unsuppressed,
+                    },
+                    *packet.get().id(),
+                ));
+            }
             RequestContent::RemoveEntry { label } => {
                 self.pool.lock().await.remove(label, &self.discrim);
                 let _ = packet.respond(Response::new_with_request(
@@ -400,7 +429,7 @@ impl Process {
                 ));
                 // unwraps the request, and pass to self as an event
                 // which will then get sent to the client as a normal event
-                let _ = self.pass(&mut event).await;
+                let _ = self.pass(&mut event, None).await;
             }
             // spawn should be passed to spaces, no processes
             RequestContent::Spawn { .. } => {
@@ -487,6 +516,10 @@ impl Process {
         self.res.send(resp).unwrap();
         rx
     }
+
+    pub async fn suppress_level(&self, channels: &[Subscription]) -> Option<u32> {
+        self.suppressors.lock().await.suppress_level(channels)
+    }
 }
 
 #[async_trait]
@@ -503,7 +536,7 @@ impl Component for Process {
         &self.storage
     }
 
-    async fn pass(&self, event: &mut Event) -> Unevaluated<bool> {
+    async fn pass(&self, event: &mut Event, _suppress_level: Option<u32>) -> Unevaluated<bool> {
         #[cfg(feature = "log")]
         log::debug!("{:?} got event {event:?}", self.discrim);
         // requestpacket is a request, not an event in a real sense
