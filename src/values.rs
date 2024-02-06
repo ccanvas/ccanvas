@@ -5,7 +5,7 @@ use tokio::sync::OnceCell;
 
 use crate::structs::Discriminator;
 
-type Term = MouseTerminal<AlternateScreen<RawTerminal<Stdout>>>;
+pub type Term = MouseTerminal<AlternateScreen<RawTerminal<Stdout>>>;
 
 pub static FOCUSED: OnceCell<Mutex<Discriminator>> = OnceCell::const_new();
 pub static SCREEN: OnceCell<Mutex<Option<Term>>> = OnceCell::const_new();

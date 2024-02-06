@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::{collections::BTreeMap, path::PathBuf};
 
 use serde::Deserialize;
 use serde_json::Value;
@@ -60,6 +60,7 @@ pub enum RequestContent {
         command: String,
         args: Vec<String>,
         label: String,
+        env: BTreeMap<String, String>,
     },
 
     #[serde(rename = "message")]
@@ -67,9 +68,10 @@ pub enum RequestContent {
     /// if target specifies a space,
     /// all components under that space will recieve the message
     Message {
-        content: String,
+        content: Value,
         sender: Discriminator,
         target: Discriminator,
+        tag: String,
     },
 
     /// create a new space at a space

@@ -1,4 +1,4 @@
-use std::{sync::Arc, time::Duration};
+use std::{collections::BTreeMap, sync::Arc, time::Duration};
 
 use ccanvas::{
     structs::Space,
@@ -22,6 +22,7 @@ fn main() {
             command[0].clone(),
             command[1].clone(),
             command[2..].to_vec(),
+            BTreeMap::default(),
         )) {
             // there is no reason to continue if spawning the component failed
             // might be a type, or whatever

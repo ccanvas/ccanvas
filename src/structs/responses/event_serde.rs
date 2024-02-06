@@ -20,7 +20,8 @@ pub enum EventSerde {
     Message {
         sender: Discriminator,
         target: Discriminator,
-        content: String,
+        content: Value,
+        tag: String,
     },
     #[serde(rename = "focused")]
     Focused,
@@ -52,10 +53,12 @@ impl EventSerde {
                 sender,
                 target,
                 content,
+                tag,
             } => Self::Message {
                 sender: sender.clone(),
                 target: target.clone(),
                 content: content.clone(),
+                tag: tag.clone(),
             },
             Event::Focus { .. } => Self::Focused,
             Event::Unfocus => Self::Unfocused,

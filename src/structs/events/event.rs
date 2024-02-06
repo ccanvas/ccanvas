@@ -2,6 +2,7 @@ use crate::structs::{Discriminator, Packet, Request, Response, Subscription};
 
 use super::{KeyEvent, MouseEvent};
 
+use serde_json::Value;
 use termion::event::Event as TermionEvent;
 
 /// a basic, generic unit of event
@@ -21,7 +22,8 @@ pub enum Event {
     Message {
         sender: Discriminator,
         target: Discriminator,
-        content: String,
+        content: Value,
+        tag: String,
     },
 }
 
@@ -49,10 +51,12 @@ impl Clone for Event {
                 sender,
                 target,
                 content,
+                tag,
             } => Self::Message {
                 sender: sender.clone(),
                 target: target.clone(),
                 content: content.clone(),
+                tag: tag.clone(),
             },
             Self::RequestPacket(_) => panic!("bad clone"),
         }
@@ -71,12 +75,13 @@ impl Event {
                     modifier: key.modifier,
                 },
             ],
-            Self::Message { sender, .. } => vec![
+            Self::Message { sender, tag, .. } => vec![
                 Subscription::Everything,
                 Subscription::AllMessages,
                 Subscription::SpecificMessage {
                     source: sender.clone(),
                 },
+                Subscription::SpecificMessageTag { tag: tag.clone() },
             ],
             Self::MouseEvent(mouse) => vec![
                 Subscription::Everything,

@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use std::error::Error;
 use std::sync::Arc;
 
@@ -7,7 +8,7 @@ use tokio::sync::Mutex;
 use crate::traits::Component;
 
 use crate::structs::*;
-use crate::values::FOCUSED;
+use crate::values::{FOCUSED, SCREEN};
 
 /// the basic unit of display
 pub struct Space {
@@ -91,11 +92,12 @@ impl Space {
         label: String,
         command: String,
         args: Vec<String>,
+        env: BTreeMap<String, String>,
     ) -> Result<(), Box<dyn Error>> {
         self.processes
             .lock()
             .await
-            .insert(Process::spawn(label, &self.discrim, command, args).await?);
+            .insert(Process::spawn(label, &self.discrim, command, args, env).await?);
         Ok(())
     }
 }
@@ -262,6 +264,7 @@ impl Component for Space {
                         command,
                         args,
                         label,
+                        env,
                     } => {
                         // check if spawning process succeed
                         match Process::spawn(
@@ -269,6 +272,7 @@ impl Component for Space {
                             &self.discrim,
                             command.clone(),
                             args.clone(),
+                            env.clone(),
                         )
                         .await
                         {
@@ -388,9 +392,14 @@ impl Component for Space {
                         // does rendering stuff, no explainations needed
                         let flush = *flush;
                         let content = content.clone();
-                        tokio::task::spawn_blocking(move || content.draw(flush))
-                            .await
-                            .unwrap();
+                        tokio::task::spawn_blocking(move || {
+                            content.draw(
+                                SCREEN.get().unwrap().lock().unwrap().as_mut().unwrap(),
+                                flush,
+                            )
+                        })
+                        .await
+                        .unwrap();
 
                         let _ = req.respond(Response::new_with_request(
                             ResponseContent::Success {
@@ -403,11 +412,13 @@ impl Component for Space {
                         content,
                         sender,
                         target,
+                        tag,
                     } => {
                         // heres all the things needed to construct an event
                         let sender = sender.clone();
                         let target = target.clone();
                         let content = content.clone();
+                        let tag = tag.clone();
 
                         let _ = req.respond(Response::new_with_request(
                             ResponseContent::Success {
@@ -421,6 +432,7 @@ impl Component for Space {
                             sender,
                             target,
                             content,
+                            tag,
                         };
 
                         self.pass(event, None).await;

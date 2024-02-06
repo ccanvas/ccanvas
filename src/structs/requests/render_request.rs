@@ -2,7 +2,7 @@ use serde::Deserialize;
 use std::io::Write;
 use termion::{color, cursor};
 
-use crate::values::SCREEN;
+use crate::values::Term;
 
 #[derive(Deserialize, Clone, PartialEq, Eq, Debug)]
 #[serde(tag = "type")]
@@ -42,11 +42,11 @@ pub enum RenderRequest {
 }
 
 impl RenderRequest {
-    pub fn draw(&self, mut flush: bool) {
+    pub fn draw(&self, term: &mut Term, mut flush: bool) {
         match self {
             Self::SetChar { x, y, c } => {
                 write!(
-                    SCREEN.get().unwrap().lock().unwrap().as_mut().unwrap(),
+                    term,
                     "{}{c}",
                     termion::cursor::Goto(*x as u16 + 1, *y as u16 + 1)
                 )
@@ -54,7 +54,7 @@ impl RenderRequest {
             }
             Self::SetCharColoured { x, y, c, fg, bg } => {
                 write!(
-                    SCREEN.get().unwrap().lock().unwrap().as_mut().unwrap(),
+                    term,
                     "{}{}{}{c}{}{}",
                     color::Fg(*fg),
                     color::Bg(*bg),
@@ -66,75 +66,28 @@ impl RenderRequest {
             }
             Self::Flush => flush = true,
             Self::SetCursorStyle { style } => match style {
-                CursorStyle::BlinkingBar => write!(
-                    SCREEN.get().unwrap().lock().unwrap().as_mut().unwrap(),
-                    "{}",
-                    cursor::BlinkingBar
-                ),
-                CursorStyle::BlinkingBlock => write!(
-                    SCREEN.get().unwrap().lock().unwrap().as_mut().unwrap(),
-                    "{}",
-                    cursor::BlinkingBlock
-                ),
-                CursorStyle::BlinkingUnderline => write!(
-                    SCREEN.get().unwrap().lock().unwrap().as_mut().unwrap(),
-                    "{}",
-                    cursor::BlinkingUnderline
-                ),
+                CursorStyle::BlinkingBar => write!(term, "{}", cursor::BlinkingBar),
+                CursorStyle::BlinkingBlock => write!(term, "{}", cursor::BlinkingBlock),
+                CursorStyle::BlinkingUnderline => write!(term, "{}", cursor::BlinkingUnderline),
                 CursorStyle::SteadyBar => {
-                    write!(
-                        SCREEN.get().unwrap().lock().unwrap().as_mut().unwrap(),
-                        "{}",
-                        cursor::SteadyBar
-                    )
+                    write!(term, "{}", cursor::SteadyBar)
                 }
-                CursorStyle::SteadyBlock => write!(
-                    SCREEN.get().unwrap().lock().unwrap().as_mut().unwrap(),
-                    "{}",
-                    cursor::SteadyBlock
-                ),
-                CursorStyle::SteadyUnderline => write!(
-                    SCREEN.get().unwrap().lock().unwrap().as_mut().unwrap(),
-                    "{}",
-                    cursor::SteadyUnderline
-                ),
+                CursorStyle::SteadyBlock => write!(term, "{}", cursor::SteadyBlock),
+                CursorStyle::SteadyUnderline => write!(term, "{}", cursor::SteadyUnderline),
             }
             .unwrap(),
-            Self::HideCursor => write!(
-                SCREEN.get().unwrap().lock().unwrap().as_mut().unwrap(),
-                "{}",
-                cursor::Hide
-            )
-            .unwrap(),
-            Self::ShowCursor => write!(
-                SCREEN.get().unwrap().lock().unwrap().as_mut().unwrap(),
-                "{}",
-                cursor::Show
-            )
-            .unwrap(),
+            Self::HideCursor => write!(term, "{}", cursor::Hide).unwrap(),
+            Self::ShowCursor => write!(term, "{}", cursor::Show).unwrap(),
             Self::RenderMultiple { tasks } => {
                 for task in tasks.clone() {
-                    task.draw(false);
+                    task.draw(term, false);
                 }
             }
-            Self::ClearAll => write!(
-                SCREEN.get().unwrap().lock().unwrap().as_mut().unwrap(),
-                "{}",
-                termion::clear::All
-            )
-            .unwrap(),
+            Self::ClearAll => write!(term, "{}", termion::clear::All).unwrap(),
         }
 
         if flush {
-            SCREEN
-                .get()
-                .unwrap()
-                .lock()
-                .unwrap()
-                .as_mut()
-                .unwrap()
-                .flush()
-                .unwrap();
+            term.flush().unwrap();
         }
     }
 }

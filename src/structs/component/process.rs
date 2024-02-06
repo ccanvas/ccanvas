@@ -1,6 +1,7 @@
 use std::{
-    collections::{hash_map::Entry, HashMap},
+    collections::{hash_map::Entry, BTreeMap, HashMap},
     env,
+    ffi::OsString,
     io::{Read, Write},
     os::unix::net::{UnixListener, UnixStream},
     process::Stdio,
@@ -12,7 +13,7 @@ use tokio::{
     process::{Child, Command},
     sync::{
         mpsc::{self, UnboundedSender},
-        oneshot, Mutex,
+        oneshot, Mutex, OnceCell,
     },
     task::JoinHandle,
 };
@@ -63,6 +64,8 @@ impl PartialEq for Process {
     }
 }
 
+static ENVS: OnceCell<Vec<(OsString, OsString)>> = OnceCell::const_new();
+
 impl Process {
     /// spawns a new process with command
     pub async fn spawn(
@@ -70,6 +73,7 @@ impl Process {
         parent: &Discriminator,
         command: String,
         args: Vec<String>,
+        env: BTreeMap<String, String>,
     ) -> Result<Self, std::io::Error> {
         let discrim = parent.new_child();
         let storage = Storage::new(&discrim).await;
@@ -86,6 +90,19 @@ impl Process {
         Storage::remove_if_exist(&socket_path).await.unwrap();
         let child = Arc::new(Mutex::new(
             Command::new(&command)
+                .envs(
+                    ENVS.get_or_init(|| async {
+                        tokio::task::spawn_blocking(|| env::vars_os().collect::<Vec<_>>())
+                            .await
+                            .unwrap()
+                    })
+                    .await
+                    .clone()
+                    .into_iter(),
+                )
+                .env("CCANVAS_COMPONENT", "1")
+                .envs(env.into_iter())
+                .envs(std::env::vars_os())
                 .kill_on_drop(true)
                 .args(&args)
                 .current_dir(storage.path())
@@ -144,6 +161,9 @@ impl Process {
                                     .0,
                                 ))
                             }
+
+                            #[cfg(feature = "log")]
+                            log::debug!("sent {res:?}");
 
                             if let Ok(mut stream) = UnixStream::connect(socket) {
                                 stream
@@ -415,11 +435,13 @@ impl Process {
                 content,
                 sender,
                 target,
+                tag,
             } => {
                 let mut event = Event::Message {
                     sender: sender.clone(),
                     target: target.clone(),
                     content: content.clone(),
+                    tag: tag.clone(),
                 };
                 let _ = packet.respond(Response::new_with_request(
                     ResponseContent::Success {

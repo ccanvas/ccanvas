@@ -35,6 +35,9 @@ pub enum Subscription {
     /// a specific message from someone
     #[serde(rename = "specific message")]
     SpecificMessage { source: Discriminator },
+    /// a specific message with tag
+    #[serde(rename = "specific message tag")]
+    SpecificMessageTag { tag: String },
     /// screen resize events
     #[serde(rename = "screen resize")]
     ScreenResize,
