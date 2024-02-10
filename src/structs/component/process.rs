@@ -393,7 +393,7 @@ impl Process {
             child,
             label,
             storage,
-            pool: Arc::new(Mutex::new(Pool::default())),
+            pool: Arc::new(Mutex::new(Pool::new(discrim.clone()))),
             discrim,
             command: [command].into_iter().chain(args).collect(),
             listener,

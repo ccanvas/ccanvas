@@ -47,11 +47,12 @@ impl Space {
 
     /// create new self with parent discriminator
     async fn new_with_parent(label: String, parent_discrim: &Discriminator) -> Self {
+        let discrim = parent_discrim.new_child();
         Self {
-            storage: Storage::new(parent_discrim).await,
+            storage: Storage::new(&discrim).await,
             label,
-            discrim: parent_discrim.new_child(),
-            pool: Arc::new(Mutex::new(Pool::default())),
+            pool: Arc::new(Mutex::new(Pool::new(discrim.clone()))),
+            discrim,
             subspaces: Arc::new(Mutex::new(Collection::default())),
             focus: Arc::new(Mutex::new(Focus::default())),
             passes: Arc::new(Mutex::new(Passes::default())),

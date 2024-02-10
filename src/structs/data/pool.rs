@@ -6,12 +6,20 @@ use tokio::sync::mpsc::UnboundedSender;
 use crate::structs::{Discriminator, EventSerde, Response, ResponseContent};
 
 /// pool of key-value pairs for shared or private access
-#[derive(Default)]
 pub struct Pool {
+    discrim: Discriminator,
     map: HashMap<String, PoolItem>,
 }
 
 impl Pool {
+    /// create a new pool using discrim
+    pub fn new(discrim: Discriminator) -> Self {
+        Self {
+            discrim,
+            map: HashMap::default(),
+        }
+    }
+
     /// get a key value, similar to a regular hashap
     pub fn get(&mut self, label: &str) -> Option<Value> {
         self.map
@@ -22,7 +30,7 @@ impl Pool {
     /// set a value, this will call all the watchers
     pub fn set(&mut self, label: &str, value: Value) {
         match self.map.entry(label.to_string()) {
-            Entry::Occupied(mut entry) => entry.get_mut().set(label, value),
+            Entry::Occupied(mut entry) => entry.get_mut().set(label, value, &self.discrim),
             Entry::Vacant(entry) => {
                 let _ = entry.insert(PoolItem::new(value));
             }
@@ -114,11 +122,11 @@ impl PoolItem {
     /// create an entry, override existing value
     /// never fails
     /// call all watchers and remove the dead ones
-    pub fn set(&mut self, label: &str, value: Value) {
+    pub fn set(&mut self, label: &str, value: Value, discrim: &Discriminator) {
         self.value = Some(value.clone());
 
         let mut dead_senders = Vec::new();
-        self.listener.iter().for_each(|(discrim, listener)| {
+        self.listener.iter().for_each(|(_, listener)| {
             if listener
                 .send(Response::new(ResponseContent::Event {
                     content: EventSerde::ValueUpdated {
