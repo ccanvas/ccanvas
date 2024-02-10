@@ -100,9 +100,9 @@ impl Process {
                     .clone()
                     .into_iter(),
                 )
-                .env("CCANVAS_COMPONENT", "1")
                 .envs(env.into_iter())
                 .envs(std::env::vars_os())
+                .env("CCANVAS_COMPONENT", "1")
                 .kill_on_drop(true)
                 .args(&args)
                 .current_dir(storage.path())
@@ -354,7 +354,14 @@ impl Process {
                         }
                         RequestContent::Unwatch { watcher, .. } => *watcher = discrim.clone(),
                         // mark self as sender
-                        RequestContent::Message { sender, .. } => *sender = discrim.clone(),
+                        RequestContent::Message { sender, target, .. } => {
+                            *sender = discrim.clone();
+
+                            // or else it will crash for this bad request
+                            if target.is_empty() {
+                                *target = Discriminator::master()
+                            }
+                        }
                         RequestContent::NewSpace { .. }
                         | RequestContent::FocusAt
                         | RequestContent::Suppress { .. }

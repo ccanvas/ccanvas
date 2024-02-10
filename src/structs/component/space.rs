@@ -509,7 +509,7 @@ impl Component for Space {
                                 .passes
                                 .lock()
                                 .await
-                                .subscribers(subscriptions)
+                                .subscribers(&subscriptions)
                                 .iter()
                                 .any(|item| item.discrim() == proc.discrim())
                             {
@@ -545,6 +545,7 @@ impl Component for Space {
         let subscriptions = event.subscriptions();
         // all components listening to this event
         let targets = self.passes.lock().await.subscribers(&subscriptions);
+
         #[cfg(feature = "log")]
         log::debug!("got here 2");
         let suppressors_mutex = self.suppressors.clone();

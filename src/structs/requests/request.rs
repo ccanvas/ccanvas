@@ -73,9 +73,15 @@ impl Request {
     }
 
     /// returns subscriptions that would want to take in self
-    pub fn subscriptions(&self) -> Option<&[Subscription]> {
-        match self.content {
-            RequestContent::Message { .. } => Some(&[Subscription::AllMessages]),
+    pub fn subscriptions(&self) -> Option<Vec<Subscription>> {
+        match &self.content {
+            RequestContent::Message { sender, tag, .. } => Some(vec![
+                Subscription::AllMessages,
+                Subscription::SpecificMessage {
+                    source: sender.clone(),
+                },
+                Subscription::SpecificMessageTag { tag: tag.clone() },
+            ]),
             _ => None,
         }
     }
