@@ -88,6 +88,8 @@ impl Process {
         // the component should send requests to this path
         let socket_path = storage.path().join("requests.sock");
         Storage::remove_if_exist(&socket_path).await.unwrap();
+        // creates a socket and listens to it
+        let socket = tokio::task::block_in_place(|| UnixListener::bind(socket_path).unwrap());
         let child = Arc::new(Mutex::new(
             Command::new(&command)
                 .envs(
@@ -100,7 +102,7 @@ impl Process {
                     .clone()
                     .into_iter(),
                 )
-                .envs(env.into_iter())
+                .envs(env.iter())
                 .envs(std::env::vars_os())
                 .env("CCANVAS_COMPONENT", "1")
                 .kill_on_drop(true)
@@ -188,11 +190,7 @@ impl Process {
             let responder = responder_send.clone();
             let storage = storage.clone();
             tokio::spawn(async move {
-                // creates a socket and listens to it
-                let socket =
-                    tokio::task::block_in_place(|| UnixListener::bind(socket_path).unwrap());
                 let mut incoming = socket.incoming();
-
                 while let Some(stream) = tokio::task::block_in_place(|| incoming.next()) {
                     // give up if the stream is errorneous
                     let mut stream = match stream {
@@ -387,7 +385,7 @@ impl Process {
             })
         };
 
-        let _ = set_socket_recv.await;
+        set_socket_recv.await.unwrap();
 
         Ok(Self {
             child,

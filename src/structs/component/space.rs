@@ -565,8 +565,6 @@ impl Component for Space {
         let mut event = event.clone();
         let subspaces = self.subspaces.clone();
         let focus = self.focus.clone();
-        #[cfg(feature = "log")]
-        let discrim = self.discrim.clone();
         let uneval = tokio::spawn(async move {
             // repeat until someone decide to capture the event
             for target in targets {
