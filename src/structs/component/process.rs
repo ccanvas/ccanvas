@@ -540,7 +540,7 @@ impl Process {
     pub async fn send_event(&self, resp: Response) -> oneshot::Receiver<bool> {
         let (tx, rx) = oneshot::channel();
         self.confirm_handles.lock().await.insert(resp.id(), tx);
-        self.res.send(resp).unwrap();
+        let _ = self.res.send(resp);
         rx
     }
 

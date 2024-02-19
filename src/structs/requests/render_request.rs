@@ -36,6 +36,15 @@ pub enum RenderRequest {
     /// clear entire screen
     ClearAll,
 
+    #[serde(rename = "clear area")]
+    /// clear a specified area
+    ClearArea {
+        x: u32,
+        y: u32,
+        width: u32,
+        height: u32,
+    },
+
     #[serde(rename = "render multiple")]
     /// complete multiple render tasks at the same time - e.g. stacking changes
     RenderMultiple { tasks: Vec<Self> },
@@ -44,6 +53,30 @@ pub enum RenderRequest {
 impl RenderRequest {
     pub fn draw(&self, term: &mut Term, mut flush: bool) {
         match self {
+            Self::ClearArea {
+                x,
+                y,
+                width,
+                height,
+            } => {
+                write!(
+                    term,
+                    "{}{}",
+                    color::Fg(termion::color::Reset),
+                    color::Bg(termion::color::Reset)
+                )
+                .unwrap();
+                for y in *y..*y + *height {
+                    for x in *x..*x + *width {
+                        write!(
+                            term,
+                            "{} ",
+                            termion::cursor::Goto(x as u16 + 1, y as u16 + 1)
+                        )
+                        .unwrap();
+                    }
+                }
+            }
             Self::SetChar { x, y, c } => {
                 write!(
                     term,
