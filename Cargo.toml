@@ -1,0 +1,8 @@
+[package]
+name = "ccanvas"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+libc = "0.2.168"
+mio = { version = "1.0.3", features = ["os-poll", "net"]}
