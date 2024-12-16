@@ -1,7 +1,8 @@
 use std::{
     ffi::c_void,
-    fs,
+    fs, panic,
     path::{Path, PathBuf},
+    process,
     sync::OnceLock,
 };
 
@@ -20,6 +21,8 @@ pub struct Instance;
 
 impl Instance {
     pub fn init() {
+        Self::panic();
+
         INSTANCE_ID.set(Self::get_random()).unwrap();
         INSTANCE_PATH
             .set(
@@ -34,6 +37,14 @@ impl Instance {
         Connection::init();
     }
 
+    pub fn panic() {
+        let default = panic::take_hook();
+        panic::set_hook(Box::new(move |info| {
+            default(info);
+            process::exit(1);
+        }));
+    }
+
     pub fn path() -> &'static Path {
         INSTANCE_PATH.get().unwrap()
     }
@@ -41,7 +52,7 @@ impl Instance {
     pub fn path_create() -> &'static Path {
         let path = Self::path();
         if !path.exists() {
-            fs::create_dir_all(&path).unwrap();
+            fs::create_dir_all(path).unwrap();
         }
         path
     }

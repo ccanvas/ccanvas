@@ -1,5 +1,7 @@
 use std::{
     collections::{HashMap, HashSet},
+    io::Write,
+    path::PathBuf,
     sync::OnceLock,
 };
 
@@ -20,12 +22,10 @@ pub struct Connection {
     // processor | processor
     pub parent: usize,
     // processor | processor
-    pub data: HashMap<Vec<u8>, Vec<u8>>,
-    // processor | processor
     pub children: HashSet<usize>,
 
     // message | message
-    pub client: Option<UnixStream>,
+    pub client: Option<PathBuf>,
     // connection | none
     pub server: UnixListener,
 }
@@ -33,14 +33,10 @@ pub struct Connection {
 impl Connection {
     pub fn init() {
         unsafe { CONNECTIONS.set(HashMap::new()) }.unwrap();
-        Self::new(0, 0, HashMap::new()).unwrap();
+        Self::create(0, 0).unwrap();
     }
 
-    pub fn new(
-        id: usize,
-        parent: usize,
-        data: HashMap<Vec<u8>, Vec<u8>>,
-    ) -> Result<(), &'static str> {
+    pub fn create(id: usize, parent: usize) -> Result<(), &'static str> {
         let conns = Self::connections_mut();
 
         if conns.contains_key(&id) {
@@ -53,7 +49,7 @@ impl Connection {
 
         Instance::conn_path_create(id);
         let server = UnixListener::bind(Instance::conn_server_sock(id));
-        let client = UnixStream::connect(Instance::conn_client_sock(id));
+        let client_path = Instance::conn_client_sock(id);
 
         if server.is_err() {
             return Err("socket");
@@ -64,8 +60,7 @@ impl Connection {
             Self {
                 parent,
                 children: HashSet::new(),
-                data,
-                client: client.ok(),
+                client: client_path.exists().then_some(client_path),
                 server: server.unwrap(),
             },
         );
@@ -105,5 +100,17 @@ impl Connection {
 
     pub fn get_mut(id: &usize) -> Option<&'static mut Connection> {
         Self::connections_mut().get_mut(id)
+    }
+}
+
+impl Connection {
+    pub fn write(&mut self, bytes: &[u8]) {
+        if self.client.as_ref().is_some_and(|path| {
+            UnixStream::connect(path)
+                .and_then(|mut socket| socket.write_all(bytes))
+                .is_err()
+        }) {
+            self.client = None;
+        }
     }
 }

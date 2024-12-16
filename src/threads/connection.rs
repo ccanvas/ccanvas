@@ -1,9 +1,12 @@
 use std::{
+    io::Read,
     sync::OnceLock,
     thread::{self, JoinHandle},
 };
 
 use mio::{Events, Poll, Registry};
+
+use crate::Connection;
 
 pub struct ConnectionThread;
 
@@ -25,6 +28,17 @@ impl ConnectionThread {
                 poll.poll(&mut events, None).unwrap();
 
                 for event in &events {
+                    let id = event.token().0;
+                    let conn = Connection::get_mut(&id).unwrap();
+                    let bytes = conn
+                        .server
+                        .accept()
+                        .unwrap()
+                        .0
+                        .bytes()
+                        .map_while(Result::ok)
+                        .collect::<Vec<_>>();
+
                     // send to processor
                 }
             }
