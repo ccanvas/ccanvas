@@ -8,7 +8,6 @@ Request a connection to server.
 ```json
 {
     "t": "reqconn",
-    "id": usize, // module id
-    "d": HashMap<[u8], [u8]>, // connection info
+    "id": usize // module id
 }
 ```
