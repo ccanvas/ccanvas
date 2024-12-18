@@ -28,6 +28,8 @@ pub struct Connection {
     pub client: Option<PathBuf>,
     // connection | none
     pub server: UnixListener,
+    // connection | connection
+    pub connections: HashSet<usize>,
 }
 
 impl Connection {
@@ -55,21 +57,17 @@ impl Connection {
             return Err("socket");
         }
 
-        conns.insert(
-            id,
-            Self {
-                parent,
-                children: HashSet::new(),
-                client: client_path.exists().then_some(client_path),
-                server: server.unwrap(),
-            },
-        );
+        let mut entry = Self {
+            parent,
+            children: HashSet::new(),
+            client: client_path.exists().then_some(client_path),
+            server: server.unwrap(),
+            connections: HashSet::new(),
+        };
 
-        let entry = conns.get_mut(&id).unwrap();
+        ConnectionThread::add_server(&mut entry.server, id);
 
-        ConnectionThread::registry()
-            .register(&mut entry.server, Token(id), Interest::READABLE)
-            .unwrap();
+        conns.insert(id, entry);
 
         Ok(())
     }
