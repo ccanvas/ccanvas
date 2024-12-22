@@ -8,6 +8,6 @@ Request a connection to server.
 ```json
 {
     "t": "reqconn",
-    "id": usize // module id
+    "i": usize // module id
 }
 ```

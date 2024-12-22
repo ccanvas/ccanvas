@@ -4,6 +4,7 @@
 
 # Structure
 
+- [Packets](./packets.md)
 - [Connection](./connection.md)
 - [Instance](./instance.md)
 - [Subscription](./subscription.md)
@@ -29,3 +30,4 @@
 - [msg](./packets/msg.md)
 - [sub](./packets/sub.md)
     - [unsub](./packets/unsub.md)
+    - [subbed](./packets/subbed.md)

@@ -109,6 +109,7 @@ impl Connection {
                 .is_err()
         }) {
             self.client = None;
+            // TODO maybe unsubscribe from everything etc
         }
     }
 }

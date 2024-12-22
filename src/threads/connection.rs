@@ -2,7 +2,7 @@ use std::{
     cmp,
     collections::{HashMap, HashSet},
     io::{self, BorrowedBuf, Read},
-    sync::{atomic::AtomicUsize, OnceLock},
+    sync::{atomic::AtomicUsize, mpsc::Sender, OnceLock},
     thread::{self, JoinHandle},
     usize,
 };
@@ -13,12 +13,14 @@ use mio::{
     Events, Interest, Poll, Registry, Token,
 };
 
-use crate::Connection;
+use crate::{threads::processor::ProcessorThread, Connection};
+
+use super::ProcessorEvent;
 
 pub struct ConnectionThread;
 
 static REGISTRY: OnceLock<&Registry> = OnceLock::new();
-static mut CONNECTIONS: OnceLock<HashMap<usize, UnixStream>> = OnceLock::new();
+static mut CONNECTIONS: OnceLock<HashMap<usize, (usize, UnixStream)>> = OnceLock::new();
 static CONNECTION_TOKEN: AtomicUsize = AtomicUsize::new(usize::MAX);
 
 impl ConnectionThread {
@@ -31,6 +33,8 @@ impl ConnectionThread {
         unsafe { CONNECTIONS.set(HashMap::new()) }.unwrap();
 
         thread::spawn(|| {
+            let processor = ProcessorThread::sender();
+
             let poll = unsafe { POLL.get_mut() }.unwrap();
             let mut events = Events::with_capacity(1024);
 
@@ -77,16 +81,20 @@ impl ConnectionThread {
                                     .unwrap();
                                 unsafe { CONNECTIONS.get_mut() }
                                     .unwrap()
-                                    .insert(token, connection);
+                                    .insert(token, (server.0, connection));
                             }
                         }
                         token => {
-                            if let Some(connection) =
+                            if let Some((server, connection)) =
                                 unsafe { CONNECTIONS.get_mut() }.unwrap().get_mut(&token.0)
                             {
-                                let done = handle_event(connection, event).unwrap();
+                                let done = handle_event(connection, event, *server, &processor).unwrap();
                                 if done {
-                                    println!("deregister") // TODO
+                                    REGISTRY.get().unwrap().deregister(connection).unwrap();
+                                    unsafe { CONNECTIONS.get_mut() }
+                                        .unwrap()
+                                        .remove(&token.0);
+                                    Connection::get_mut(&server).unwrap().connections.remove(&token.0);
                                 }
                             } else {
                                 continue;
@@ -109,17 +117,17 @@ impl ConnectionThread {
     }
 }
 
-fn handle_event(connection: &mut UnixStream, event: &Event) -> io::Result<bool> {
+fn handle_event(connection: &mut UnixStream, event: &Event, server: usize, sender: &Sender<ProcessorEvent>) -> io::Result<bool> {
     if event.is_readable() {
         let mut recieved_data = Vec::new();
 
-        let res = default_read_to_end(connection, &mut recieved_data, None);
+        let _ = default_read_to_end(connection, &mut recieved_data, None);
 
         if !recieved_data.is_empty() {
-            dbg!(&recieved_data);
-            println!("Read bytes: {}", recieved_data.len());
+            sender.send(ProcessorEvent::Packet { source: server, data: recieved_data }).unwrap();
+            return Ok(false)
         }
-        return res.map(|n| n == 0);
+        return Ok(true);
     }
 
     Ok(false)

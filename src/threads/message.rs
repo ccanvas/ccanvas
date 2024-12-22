@@ -34,4 +34,8 @@ impl MessageThread {
             }
         })
     }
+
+    pub fn sender() -> &'static Sender<(MessageTarget, Vec<u8>)> {
+        SENDER.get().unwrap()
+    }
 }

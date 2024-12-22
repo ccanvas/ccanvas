@@ -1,14 +1,13 @@
 # sub
 
-Request a subscription to an event.
+Request a subscription to a channel.
 
 - Target: `CCANVAS_HOME/ID/server.sock`
 - Response: `subbed`
 
 ```json
 {
-    "t": "msg",
-    "s": usize?, // source ID
-    "d": [Binary] // payload
+    "t": "sub",
+    "c": String // channel
 }
 ```
