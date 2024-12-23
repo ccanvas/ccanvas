@@ -1,11 +1,14 @@
-use std::sync::{mpsc::{self, Sender}, OnceLock};
+use std::{
+    sync::{
+        mpsc::{self, Sender},
+        OnceLock,
+    },
+    thread::{self, JoinHandle},
+};
 
 #[derive(Debug)]
 pub enum ProcessorEvent {
-    Packet {
-        source: usize,
-        data: Vec<u8>
-    }
+    Packet { source: usize, data: Vec<u8> },
 }
 
 static SENDER: OnceLock<Sender<ProcessorEvent>> = OnceLock::new();
@@ -13,13 +16,17 @@ static SENDER: OnceLock<Sender<ProcessorEvent>> = OnceLock::new();
 pub struct ProcessorThread;
 
 impl ProcessorThread {
-    pub fn spawn() {
+    pub fn spawn() -> JoinHandle<()> {
         let (tx, rx) = mpsc::channel();
-        SENDER.set(tx);
+        SENDER.set(tx).unwrap();
 
-        for event in rx.recv() {
-            dbg!(event);
-        }
+        thread::spawn(move || {
+            while let Ok(event) = rx.recv() {
+                dbg!(event);
+            }
+
+            panic!("recv shutdown")
+        })
     }
 
     pub fn sender() -> Sender<ProcessorEvent> {

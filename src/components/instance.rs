@@ -1,20 +1,14 @@
 use std::{
-    ffi::c_void,
     fs, panic,
     path::{Path, PathBuf},
     process,
     sync::OnceLock,
 };
 
-use libc::{size_t, syscall};
-
-use crate::{ConnectionThread, MessageThread};
+use crate::{ConnectionThread, MessageThread, ProcessorThread};
 
 use super::connection::Connection;
 
-const GETRANDOM: i64 = 318;
-
-static INSTANCE_ID: OnceLock<usize> = OnceLock::new();
 static INSTANCE_PATH: OnceLock<PathBuf> = OnceLock::new();
 
 pub struct Instance;
@@ -23,14 +17,12 @@ impl Instance {
     pub fn init() {
         Self::panic();
 
-        INSTANCE_ID.set(Self::get_random()).unwrap();
-        INSTANCE_PATH
-            .set(
-                PathBuf::from(std::env::var("CCANVAS_PATH").unwrap_or("/tmp/ccanvas/".to_string()))
-                    .join(INSTANCE_ID.get().unwrap().to_string()),
-            )
-            .unwrap();
+        let path =
+            PathBuf::from(std::env::var("CCANVAS_PATH").expect("CCANVAS_PATH not specified"));
 
+        INSTANCE_PATH.set(path).unwrap();
+
+        ProcessorThread::spawn();
         ConnectionThread::spawn();
         MessageThread::spawn();
         Self::path_create();
@@ -76,12 +68,5 @@ impl Instance {
 
     pub fn conn_server_sock(id: usize) -> PathBuf {
         Self::conn_path(id).join("server.sock")
-    }
-
-    pub fn get_random() -> usize {
-        let mut buffer = [0u8; std::mem::size_of::<usize>()];
-        let size = buffer.len() as size_t;
-        let _ = unsafe { syscall(GETRANDOM, buffer.as_mut_ptr() as *mut c_void, size, 0) };
-        usize::from_ne_bytes(buffer)
     }
 }

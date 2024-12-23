@@ -88,13 +88,15 @@ impl ConnectionThread {
                             if let Some((server, connection)) =
                                 unsafe { CONNECTIONS.get_mut() }.unwrap().get_mut(&token.0)
                             {
-                                let done = handle_event(connection, event, *server, &processor).unwrap();
+                                let done =
+                                    handle_event(connection, event, *server, &processor).unwrap();
                                 if done {
                                     REGISTRY.get().unwrap().deregister(connection).unwrap();
-                                    unsafe { CONNECTIONS.get_mut() }
+                                    unsafe { CONNECTIONS.get_mut() }.unwrap().remove(&token.0);
+                                    Connection::get_mut(server)
                                         .unwrap()
+                                        .connections
                                         .remove(&token.0);
-                                    Connection::get_mut(&server).unwrap().connections.remove(&token.0);
                                 }
                             } else {
                                 continue;
@@ -117,15 +119,25 @@ impl ConnectionThread {
     }
 }
 
-fn handle_event(connection: &mut UnixStream, event: &Event, server: usize, sender: &Sender<ProcessorEvent>) -> io::Result<bool> {
+fn handle_event(
+    connection: &mut UnixStream,
+    event: &Event,
+    server: usize,
+    sender: &Sender<ProcessorEvent>,
+) -> io::Result<bool> {
     if event.is_readable() {
         let mut recieved_data = Vec::new();
 
         let _ = default_read_to_end(connection, &mut recieved_data, None);
 
         if !recieved_data.is_empty() {
-            sender.send(ProcessorEvent::Packet { source: server, data: recieved_data }).unwrap();
-            return Ok(false)
+            sender
+                .send(ProcessorEvent::Packet {
+                    source: server,
+                    data: recieved_data,
+                })
+                .unwrap();
+            return Ok(false);
         }
         return Ok(true);
     }

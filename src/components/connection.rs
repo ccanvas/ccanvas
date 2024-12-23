@@ -5,10 +5,7 @@ use std::{
     sync::OnceLock,
 };
 
-use mio::{
-    net::{UnixListener, UnixStream},
-    Interest, Token,
-};
+use mio::net::{UnixListener, UnixStream};
 
 use crate::ConnectionThread;
 
