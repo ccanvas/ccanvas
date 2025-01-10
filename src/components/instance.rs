@@ -1,8 +1,5 @@
 use std::{
-    fs, panic,
-    path::{Path, PathBuf},
-    process,
-    sync::OnceLock,
+    fs, panic, path::{Path, PathBuf}, process, sync::OnceLock
 };
 
 use crate::{ConnectionThread, MessageThread, ProcessorThread};
@@ -18,14 +15,13 @@ impl Instance {
         Self::panic();
 
         let path =
-            PathBuf::from(std::env::var("CCANVAS_PATH").expect("CCANVAS_PATH not specified"));
+            PathBuf::from(std::env::var("CCANVAS_SOCK").expect("CCANVAS_SOCK not specified"));
 
         INSTANCE_PATH.set(path).unwrap();
 
         ProcessorThread::spawn();
         ConnectionThread::spawn();
         MessageThread::spawn();
-        Self::path_create();
         Connection::init();
     }
 
@@ -37,36 +33,16 @@ impl Instance {
         }));
     }
 
-    pub fn path() -> &'static Path {
+    pub fn sock() -> &'static Path {
         INSTANCE_PATH.get().unwrap()
     }
 
-    pub fn path_create() -> &'static Path {
-        let path = Self::path();
-        if !path.exists() {
-            fs::create_dir_all(path).unwrap();
+    pub fn sock_create() -> &'static Path {
+        let path = Self::sock();
+        let parent = path.parent().unwrap_or(Path::new("/"));
+        if !parent.exists() {
+            fs::create_dir_all(parent).unwrap();
         }
         path
-    }
-
-    pub fn conn_path(id: usize) -> PathBuf {
-        Self::path().join(id.to_string())
-    }
-
-    pub fn conn_path_create(id: usize) -> PathBuf {
-        let path = Self::conn_path(id);
-        if !path.exists() {
-            fs::create_dir_all(&path).unwrap();
-        }
-
-        path
-    }
-
-    pub fn conn_client_sock(id: usize) -> PathBuf {
-        Self::conn_path(id).join("client.sock")
-    }
-
-    pub fn conn_server_sock(id: usize) -> PathBuf {
-        Self::conn_path(id).join("server.sock")
     }
 }

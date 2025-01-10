@@ -5,11 +5,7 @@ use std::{
     sync::OnceLock,
 };
 
-use mio::net::{UnixListener, UnixStream};
-
-use crate::ConnectionThread;
-
-use super::Instance;
+use mio::net::UnixStream;
 
 static mut CONNECTIONS: OnceLock<HashMap<usize, Connection>> = OnceLock::new();
 
@@ -22,9 +18,7 @@ pub struct Connection {
     pub children: HashSet<usize>,
 
     // message | message
-    pub client: Option<PathBuf>,
-    // connection | none
-    pub server: UnixListener,
+    pub client: Option<UnixStream>,
     // connection | connection
     pub connections: HashSet<usize>,
 }
@@ -32,10 +26,10 @@ pub struct Connection {
 impl Connection {
     pub fn init() {
         unsafe { CONNECTIONS.set(HashMap::new()) }.unwrap();
-        Self::create(0, 0).unwrap();
+        Self::create(0, None, 0).unwrap();
     }
 
-    pub fn create(id: usize, parent: usize) -> Result<(), &'static str> {
+    pub fn create(id: usize, path: Option<PathBuf>, parent: usize) -> Result<(), &'static str> {
         let conns = Self::connections_mut();
 
         if conns.contains_key(&id) {
@@ -46,23 +40,18 @@ impl Connection {
             conns.get_mut(&parent).unwrap().children.insert(id);
         }
 
-        Instance::conn_path_create(id);
-        let server = UnixListener::bind(Instance::conn_server_sock(id));
-        let client_path = Instance::conn_client_sock(id);
-
-        if server.is_err() {
-            return Err("socket");
-        }
-
-        let mut entry = Self {
-            parent,
-            children: HashSet::new(),
-            client: client_path.exists().then_some(client_path),
-            server: server.unwrap(),
-            connections: HashSet::new(),
+        let client = if let Some(path) = path {
+            UnixStream::connect(path).ok()
+        } else {
+            None
         };
 
-        ConnectionThread::add_server(&mut entry.server, id);
+        let entry = Self {
+            parent,
+            children: HashSet::new(),
+            client,
+            connections: HashSet::new(),
+        };
 
         conns.insert(id, entry);
 
@@ -100,9 +89,8 @@ impl Connection {
 
 impl Connection {
     pub fn write(&mut self, bytes: &[u8]) {
-        if self.client.as_ref().is_some_and(|path| {
-            UnixStream::connect(path)
-                .and_then(|mut socket| socket.write_all(bytes))
+        if self.client.as_mut().is_some_and(|stream| {
+            stream.write_all(bytes)
                 .is_err()
         }) {
             self.client = None;

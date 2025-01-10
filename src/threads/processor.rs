@@ -6,9 +6,14 @@ use std::{
     thread::{self, JoinHandle},
 };
 
+use mio::Token;
+
 #[derive(Debug)]
 pub enum ProcessorEvent {
-    Packet { source: usize, data: Vec<u8> },
+    Packet {
+        token: Token,
+        data: Vec<u8>
+    },
 }
 
 static SENDER: OnceLock<Sender<ProcessorEvent>> = OnceLock::new();
