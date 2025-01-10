@@ -29,7 +29,11 @@ impl ConnectionThread {
             .set(unsafe { POLL.get() }.unwrap().registry())
             .unwrap();
 
-        REGISTRY.get().unwrap().register(&mut listener, Token(0), Interest::READABLE).unwrap();
+        REGISTRY
+            .get()
+            .unwrap()
+            .register(&mut listener, Token(0), Interest::READABLE)
+            .unwrap();
 
         thread::spawn(move || {
             let mut connections: HashMap<Token, UnixStream> = HashMap::new();
@@ -51,39 +55,29 @@ impl ConnectionThread {
 
                 for event in events.iter() {
                     match event.token() {
-                        Token(0) => {
-                            loop {
-                                let (mut connection, _) =
-                                    match listener.accept() {
-                                        Ok(res) => res,
-                                        Err(e) if e.kind() == io::ErrorKind::WouldBlock => {
-                                            break;
-                                        }
-                                        e => {
-                                            e.unwrap();
-                                            unreachable!()
-                                        }
-                                    };
+                        Token(0) => loop {
+                            let (mut connection, _) = match listener.accept() {
+                                Ok(res) => res,
+                                Err(e) if e.kind() == io::ErrorKind::WouldBlock => {
+                                    break;
+                                }
+                                e => {
+                                    e.unwrap();
+                                    unreachable!()
+                                }
+                            };
 
-                                REGISTRY
-                                    .get()
-                                    .unwrap()
-                                    .register(
-                                        &mut connection,
-                                        connection_token,
-                                        Interest::READABLE,
-                                    )
-                                    .unwrap();
-                                connections
-                                    .insert(connection_token, connection);
+                            REGISTRY
+                                .get()
+                                .unwrap()
+                                .register(&mut connection, connection_token, Interest::READABLE)
+                                .unwrap();
+                            connections.insert(connection_token, connection);
 
-                                connection_token.0 += 1;
-                            }
-                        }
+                            connection_token.0 += 1;
+                        },
                         token => {
-                            if let Some(connection) =
-                                connections.get_mut(&token)
-                            {
+                            if let Some(connection) = connections.get_mut(&token) {
                                 let done =
                                     handle_event(connection, event, &token, &processor).unwrap();
                                 if done {
@@ -124,7 +118,10 @@ fn handle_event(
 
         if !recieved_data.is_empty() {
             sender
-                .send(ProcessorEvent::Packet{ data: recieved_data, token: *token })
+                .send(ProcessorEvent::Packet {
+                    data: recieved_data,
+                    token: *token,
+                })
                 .unwrap();
             return Ok(false);
         }

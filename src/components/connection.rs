@@ -5,9 +5,11 @@ use std::{
     sync::OnceLock,
 };
 
+use ccanvas_bindings::packets::RejConn;
 use mio::net::UnixStream;
 
 static mut CONNECTIONS: OnceLock<HashMap<usize, Connection>> = OnceLock::new();
+static mut LABEL_TO_ID: OnceLock<HashMap<String, usize>> = OnceLock::new();
 
 #[derive(Debug)]
 pub struct Connection {
@@ -26,19 +28,26 @@ pub struct Connection {
 impl Connection {
     pub fn init() {
         unsafe { CONNECTIONS.set(HashMap::new()) }.unwrap();
-        Self::create(0, None, 0).unwrap();
+        unsafe { LABEL_TO_ID.set(HashMap::new()) }.unwrap();
+        Self::create(0, &None, "", "master".to_string()).unwrap();
     }
 
-    pub fn create(id: usize, path: Option<PathBuf>, parent: usize) -> Result<(), &'static str> {
+    pub fn create(id: usize, path: &Option<PathBuf>, parent: &str, label: String) -> Result<(), RejConn> {
         let conns = Self::connections_mut();
 
         if conns.contains_key(&id) {
-            return Err("id");
+            return Err(RejConn::Id);
         }
 
-        if id != parent {
-            conns.get_mut(&parent).unwrap().children.insert(id);
-        }
+        let parent_id = match parent {
+            _ if parent.is_empty() => 0,
+            _ if parent == &label => id,
+            _ => if let Some(parent_id) = unsafe { LABEL_TO_ID.get() }.unwrap().get(parent) {
+                *parent_id
+            } else {
+                return Err(RejConn::Parent)
+            }
+        };
 
         let client = if let Some(path) = path {
             UnixStream::connect(path).ok()
@@ -47,7 +56,7 @@ impl Connection {
         };
 
         let entry = Self {
-            parent,
+            parent: parent_id,
             children: HashSet::new(),
             client,
             connections: HashSet::new(),
@@ -89,10 +98,11 @@ impl Connection {
 
 impl Connection {
     pub fn write(&mut self, bytes: &[u8]) {
-        if self.client.as_mut().is_some_and(|stream| {
-            stream.write_all(bytes)
-                .is_err()
-        }) {
+        if self
+            .client
+            .as_mut()
+            .is_some_and(|stream| stream.write_all(bytes).is_err())
+        {
             self.client = None;
             // TODO maybe unsubscribe from everything etc
         }

@@ -1,5 +1,8 @@
 use std::{
-    fs, panic, path::{Path, PathBuf}, process, sync::OnceLock
+    fs, panic,
+    path::{Path, PathBuf},
+    process,
+    sync::OnceLock,
 };
 
 use crate::{ConnectionThread, MessageThread, ProcessorThread};

@@ -5,3 +5,4 @@ edition = "2021"
 
 [dependencies]
 mio = { version = "1.0", features = ["os-poll", "net"]}
+ccanvas-bindings = { path = "../ccanvas-bindings" }
