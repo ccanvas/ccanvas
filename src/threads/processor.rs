@@ -1,7 +1,4 @@
-use ccanvas_bindings::{
-    packets::{ApprConn, PacketReq, PacketRes, ReqConn},
-    rmp_serde,
-};
+use ccanvas_bindings::packets::{connection, Packet};
 use std::{
     sync::{
         mpsc::{self, Sender},
@@ -32,26 +29,30 @@ impl ProcessorThread {
             while let Ok(event) = rx.recv() {
                 match event {
                     ProcessorEvent::Packet { token, data } => {
-                        let deser = rmp_serde::from_slice::<PacketReq>(&data).unwrap();
+                        let deser = match Packet::from_bytes(&data) {
+                            Some(deser) => deser,
+                            None => continue,
+                        };
 
                         println!("got={deser:?}");
 
                         match deser {
-                            PacketReq::ReqConn(ReqConn { socket, label, parent }) => {
-                                if let Err(e) = Connection::create(token.0, &socket, &parent, label) {
-                                    if let Some(socket) = socket {
+                            Packet::Connection(connection::Group::ReqConn { socket, label }) => {
+                                if Connection::create(token.0, &socket, label) {
+                                    if socket.is_some() {
                                         Self::message(
-                                            MessageTarget::Path(socket),
-                                            &PacketRes::RejConn(e),
-                                        )
+                                            MessageTarget::One(token.0),
+                                            Packet::Connection(connection::Group::ApprConn),
+                                        );
                                     }
-                                } else if socket.is_some() {
+                                } else if let Some(socket) = socket {
                                     Self::message(
-                                        MessageTarget::One(token.0),
-                                        &PacketRes::ApprConn(ApprConn),
-                                    );
+                                        MessageTarget::PathStr(socket),
+                                        Packet::Connection(connection::Group::RejConn),
+                                    )
                                 }
                             }
+                            _ => {}
                         }
                     }
                 }
@@ -65,14 +66,10 @@ impl ProcessorThread {
         SENDER.get().unwrap().clone()
     }
 
-    fn ser(res: &PacketRes) -> Vec<u8> {
-        rmp_serde::to_vec_named(res).unwrap()
-    }
-
-    fn message(target: MessageTarget, res: &PacketRes) {
+    fn message(target: MessageTarget, res: Packet) {
         println!("sent={res:?}");
         MessageThread::sender()
-            .send((target, Self::ser(res)))
+            .send((target, res.to_bytes()))
             .unwrap();
     }
 }

@@ -1,6 +1,5 @@
 use std::{
     io::Write,
-    path::PathBuf,
     sync::{
         mpsc::{self, Sender},
         OnceLock,
@@ -20,7 +19,7 @@ static SENDER: OnceLock<Sender<(MessageTarget, Vec<u8>)>> = OnceLock::new();
 pub enum MessageTarget {
     One(usize),
     Multiple(Vec<usize>),
-    Path(PathBuf),
+    PathStr(String),
 }
 
 impl MessageThread {
@@ -35,7 +34,7 @@ impl MessageThread {
                     MessageTarget::Multiple(ids) => ids
                         .iter()
                         .for_each(|id| Connection::get_mut(id).unwrap().write(&bytes)),
-                    MessageTarget::Path(path) => {
+                    MessageTarget::PathStr(path) => {
                         if let Ok(mut sock) = UnixStream::connect(path) {
                             let _ = sock.write_all(&bytes);
                         }
