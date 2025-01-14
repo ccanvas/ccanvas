@@ -44,12 +44,12 @@ impl ConnectionThread {
             let mut events = Events::with_capacity(1024);
 
             loop {
-                if let Err(err) = poll.poll(&mut events, None) {
+                let res = poll.poll(&mut events, None);
+                if let Err(err) = &res {
                     if err.kind() == io::ErrorKind::Interrupted {
                         continue;
                     } else {
-                        Err::<(), io::Error>(err).unwrap();
-                        unreachable!()
+                        res.unwrap();
                     }
                 }
 
@@ -83,6 +83,9 @@ impl ConnectionThread {
                                 if done {
                                     REGISTRY.get().unwrap().deregister(connection).unwrap();
                                     connections.remove(&token);
+                                    processor
+                                        .send(ProcessorEvent::Disconnect { token: token.0 })
+                                        .unwrap();
                                 }
                             } else {
                                 continue;

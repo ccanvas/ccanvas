@@ -11,7 +11,7 @@ features = ["os-poll", "net"]
 [dependencies.ccanvas-bindings]
 # path = "../ccanvas-bindings"
 git = "https://github.com/ccanvas/rust-bindings"
-rev = "a02fe78"
+rev = "0548e40"
 features = [
     "connection",
     "debug"

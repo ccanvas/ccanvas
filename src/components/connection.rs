@@ -7,7 +7,8 @@ use std::{
 use mio::net::UnixStream;
 
 static mut CONNECTIONS: OnceLock<HashMap<usize, Connection>> = OnceLock::new();
-static mut LABEL_TO_ID: OnceLock<HashMap<String, usize>> = OnceLock::new();
+static mut LABEL_TO_ID: OnceLock<HashMap<Vec<u8>, usize>> = OnceLock::new();
+static mut ID_TO_LABEL: OnceLock<HashMap<usize, Vec<u8>>> = OnceLock::new();
 
 #[derive(Debug)]
 pub struct Connection {
@@ -21,18 +22,25 @@ impl Connection {
     pub fn init() {
         unsafe { CONNECTIONS.set(HashMap::new()) }.unwrap();
         unsafe { LABEL_TO_ID.set(HashMap::new()) }.unwrap();
-        Self::create(0, &None, "master".to_string());
+        unsafe { ID_TO_LABEL.set(HashMap::new()) }.unwrap();
+        Self::create(0, None, vec![]);
     }
 
-    pub fn create(id: usize, path: &Option<String>, label: String) -> bool {
+    pub fn create(id: usize, path: Option<&str>, label: Vec<u8>) -> bool {
         let conns = Self::connections_mut();
 
         if conns.contains_key(&id) {
             return false;
         }
 
-        match unsafe { LABEL_TO_ID.get_mut() }.unwrap().entry(label) {
-            std::collections::hash_map::Entry::Vacant(entry) => entry.insert(id),
+        match unsafe { LABEL_TO_ID.get_mut() }
+            .unwrap()
+            .entry(label.clone())
+        {
+            std::collections::hash_map::Entry::Vacant(entry) => {
+                entry.insert(id);
+                unsafe { ID_TO_LABEL.get_mut() }.unwrap().insert(id, label);
+            }
             _ => return false,
         };
 
@@ -50,6 +58,13 @@ impl Connection {
         conns.insert(id, entry);
 
         true
+    }
+
+    pub fn remove_id(id: usize) {
+        unsafe { ID_TO_LABEL.get_mut() }
+            .unwrap()
+            .remove(&id)
+            .and_then(|label| unsafe { LABEL_TO_ID.get_mut() }.unwrap().remove(&label));
     }
 }
 

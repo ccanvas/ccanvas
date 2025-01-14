@@ -5,6 +5,8 @@ use std::{
     sync::OnceLock,
 };
 
+use ccanvas_bindings::packets::{connection, Packet};
+
 use crate::{ConnectionThread, MessageThread, ProcessorThread};
 
 use super::connection::Connection;
@@ -14,7 +16,7 @@ static INSTANCE_PATH: OnceLock<PathBuf> = OnceLock::new();
 pub struct Instance;
 
 impl Instance {
-    pub fn init() {
+    pub fn start() {
         Self::panic();
 
         let path =
@@ -22,10 +24,18 @@ impl Instance {
 
         INSTANCE_PATH.set(path).unwrap();
 
-        ProcessorThread::spawn();
+        let processor = ProcessorThread::init();
         ConnectionThread::spawn();
         MessageThread::spawn();
         Connection::init();
+        ProcessorThread::start(processor);
+
+        let term_bytes = Packet::Connection(connection::Group::Terminate).to_bytes();
+        for connection in Connection::connections_mut().values_mut() {
+            connection.write(&term_bytes);
+        }
+
+        fs::remove_file(INSTANCE_PATH.get().unwrap()).unwrap();
     }
 
     pub fn panic() {

@@ -7,6 +7,7 @@ use crate::{MessageTarget, MessageThread};
 
 // editable by PROCESSOR
 // vec stores the same content as hashset just less searchable
+#[allow(clippy::type_complexity)]
 static mut SUBSCRIPTIONS: OnceLock<HashMap<Vec<u8>, (HashSet<usize>, Vec<usize>)>> =
     OnceLock::new();
 static mut USER_SUBSCRIPTIONS: OnceLock<HashMap<usize, HashSet<Vec<u8>>>> = OnceLock::new();
